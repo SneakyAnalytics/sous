@@ -12,6 +12,13 @@ def current_week_start() -> str:
     return (today - timedelta(days=today.weekday())).isoformat()
 
 
+def planning_week_start() -> str:
+    """The week being planned: Sunday is when the household preps for the week ahead, so from Sunday it is next week."""
+    today = datetime.now(TZ).date()
+    monday = today - timedelta(days=today.weekday())
+    return (monday + timedelta(days=7) if today.weekday() == 6 else monday).isoformat()
+
+
 def valid_week(week_start: str) -> str:
     date.fromisoformat(week_start)
     return week_start
@@ -165,3 +172,81 @@ def recent_messages(limit: int) -> list[dict]:
 def clear_messages() -> None:
     with connect() as c:
         c.execute("DELETE FROM chat_messages")
+
+
+# ---- cooking history, revisions, taste ----
+REVISABLE = ("title", "description", "servings", "prep_min", "cook_min", "ingredients", "steps", "chef_tips", "tags")
+
+
+def log_cook(recipe_id: int, rating: int | None, notes: str, cooked_on: str | None = None) -> dict:
+    day = cooked_on or datetime.now(TZ).date().isoformat()
+    with connect() as c:
+        c.execute("INSERT INTO cook_log (recipe_id, cooked_on, rating, notes) VALUES (?,?,?,?)", (recipe_id, day, rating, notes.strip()))
+        if rating:
+            c.execute("UPDATE recipes SET rating=? WHERE id=?", (rating, recipe_id))
+    return get_recipe(recipe_id)
+
+
+def cook_history(recipe_id: int) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT * FROM cook_log WHERE recipe_id=? ORDER BY cooked_on DESC, id DESC", (recipe_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def revise_recipe(rid: int, fields: dict, reason: str = "") -> dict | None:
+    """Apply changes, first saving the old version so a revision can be undone."""
+    current = get_recipe(rid)
+    if not current:
+        return None
+    changes = {k: v for k, v in fields.items() if k in REVISABLE and v is not None}
+    if changes:
+        with connect() as c:
+            c.execute("INSERT INTO recipe_revisions (recipe_id, snapshot, reason) VALUES (?,?,?)",
+                      (rid, json.dumps({k: current[k] for k in REVISABLE}), reason))
+    return update_recipe(rid, changes)
+
+
+def list_revisions(rid: int) -> list[dict]:
+    with connect() as c:
+        rows = c.execute("SELECT id, reason, created_at FROM recipe_revisions WHERE recipe_id=? ORDER BY id DESC", (rid,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def undo_revision(rid: int) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM recipe_revisions WHERE recipe_id=? ORDER BY id DESC LIMIT 1", (rid,)).fetchone()
+        if not row:
+            return None
+        c.execute("DELETE FROM recipe_revisions WHERE id=?", (row["id"],))
+    return update_recipe(rid, json.loads(row["snapshot"]))
+
+
+def get_profile() -> str:
+    with connect() as c:
+        row = c.execute("SELECT value FROM profile WHERE key='preferences'").fetchone()
+    return row["value"] if row else ""
+
+
+def set_profile(text: str) -> None:
+    with connect() as c:
+        c.execute("INSERT INTO profile (key, value) VALUES ('preferences', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (text.strip(),))
+
+
+def taste_summary() -> dict:
+    """What the household has told us, computed from ratings, favorites and cook notes."""
+    recipes = list_recipes()
+    with connect() as c:
+        notes = c.execute("SELECT recipe_id, rating, notes, cooked_on FROM cook_log WHERE notes != '' ORDER BY cooked_on DESC, id DESC LIMIT 20").fetchall()
+    titles = {r["id"]: r["title"] for r in recipes}
+    tag_counts: dict[str, int] = {}
+    for r in recipes:
+        if r["favorite"] or (r["rating"] or 0) >= 4:
+            for t in r["tags"]:
+                tag_counts[t] = tag_counts.get(t, 0) + 1
+    return {
+        "preferences": get_profile(),
+        "loved": [r["title"] for r in recipes if r["favorite"] or (r["rating"] or 0) >= 4],
+        "disliked": [r["title"] for r in recipes if r["rating"] and r["rating"] <= 2],
+        "liked_tags": [t for t, _ in sorted(tag_counts.items(), key=lambda kv: -kv[1])[:6]],
+        "cook_notes": [{"recipe": titles.get(n["recipe_id"], "?"), "rating": n["rating"], "notes": n["notes"], "cooked_on": n["cooked_on"]} for n in notes],
+    }

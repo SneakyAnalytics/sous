@@ -70,7 +70,7 @@ def test_meal_target_and_dated_plan_items(client):
 def test_chef_plan_context_and_tool(client):
     from app import chef, store
     rid = client.post("/recipes", json=RECIPE).json()["id"]
-    week = store.current_week_start()
+    week = store.planning_week_start()
     store.set_meal_target(week, 3)
     events = []
     day = store.week_days(week)[1]
@@ -79,3 +79,53 @@ def test_chef_plan_context_and_tool(client):
     assert "error" in chef.run_tool("add_to_plan", {"recipe_id": rid, "cook_date": "2001-01-01"}, events)
     ctx = chef.plan_context()
     assert "want to prep: 3" in ctx and "Pasta" in ctx and "open" in ctx
+
+
+def test_cooked_log_updates_rating_and_taste(client):
+    rid = client.post("/recipes", json=RECIPE).json()["id"]
+    r = client.post(f"/recipes/{rid}/cooked", json={"rating": 5, "notes": "Needs more garlic"}).json()
+    assert r["rating"] == 5
+    assert client.post(f"/recipes/{rid}/cooked", json={"rating": 9}).status_code == 422
+    assert client.post("/recipes/999/cooked", json={"rating": 3}).status_code == 404
+    client.put("/taste", json={"preferences": "No cilantro"})
+    taste = client.get("/taste").json()
+    assert taste["loved"] == ["Pasta"] and taste["preferences"] == "No cilantro"
+    assert taste["cook_notes"][0]["notes"] == "Needs more garlic"
+    from app import chef
+    ctx = chef.taste_context()
+    assert "No cilantro" in ctx and "Loved" in ctx and "Needs more garlic" in ctx
+
+
+def test_chef_revises_a_recipe_and_it_can_be_undone(client):
+    from app import chef
+    rid = client.post("/recipes", json=RECIPE).json()["id"]
+    events = []
+    out = chef.run_tool("revise_recipe", {"recipe_id": rid, "reason": "more garlic",
+                        "ingredients": [{"quantity": 4, "unit": "clove", "name": "garlic"}]}, events)
+    assert '"revised": true' in out and events[0]["type"] == "recipe_revised"
+    now = client.get(f"/recipes/{rid}").json()
+    assert [i["name"] for i in now["ingredients"]] == ["garlic"] and now["ingredients"][0]["category"] == "Produce"
+    assert client.get(f"/recipes/{rid}/history").json()["revisions"][0]["reason"] == "more garlic"
+    undone = client.post(f"/recipes/{rid}/undo-revision").json()
+    assert [i["name"] for i in undone["ingredients"]] == ["spaghetti", "garlic"]
+    assert client.post(f"/recipes/{rid}/undo-revision").status_code == 404
+    assert '"saved": true' in chef.run_tool("remember_preference", {"note": "No cilantro"}, events)
+    assert "No cilantro" in client.get("/taste").json()["preferences"]
+
+
+def test_planning_week_rolls_forward_on_sunday(monkeypatch):
+    from datetime import datetime
+    from app import store
+
+    class Fake(datetime):
+        now_value = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.now_value
+
+    monkeypatch.setattr(store, "datetime", Fake)
+    Fake.now_value = datetime(2026, 11, 1, 20, 0, tzinfo=store.TZ)  # Sunday evening
+    assert store.planning_week_start() == "2026-11-02" and store.current_week_start() == "2026-10-26"
+    Fake.now_value = datetime(2026, 11, 4, 9, 0, tzinfo=store.TZ)  # Wednesday
+    assert store.planning_week_start() == "2026-11-02"

@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { BookOpen, CalendarDays, ChefHat, Moon, Sun } from "lucide-react";
+import { BookOpen, CalendarDays, ChefHat, Heart, Moon, Sun } from "lucide-react";
 import { applyTheme } from "../lib/theme";
 
 const NAV = [
   { to: "/", icon: ChefHat, label: "Chef", end: true },
   { to: "/recipes", icon: BookOpen, label: "Recipes" },
   { to: "/plan", icon: CalendarDays, label: "This Week" },
+  { to: "/taste", icon: Heart, label: "Taste" },
 ];
 
 export default function Layout() {

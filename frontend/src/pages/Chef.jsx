@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, CalendarPlus, ChefHat, Send, Trash2 } from "lucide-react";
+import { BookOpen, CalendarPlus, ChefHat, Pencil, Send, Trash2 } from "lucide-react";
 import { api } from "../api";
 
 const dayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
@@ -28,6 +28,8 @@ export default function Chef() {
       setPending(null);
       qc.invalidateQueries({ queryKey: ["chat"] });
       qc.invalidateQueries({ queryKey: ["recipes"] });
+      qc.invalidateQueries({ queryKey: ["recipe"] });
+      qc.invalidateQueries({ queryKey: ["taste"] });
       qc.invalidateQueries({ queryKey: ["plan"] });
     },
   });
@@ -60,8 +62,8 @@ export default function Chef() {
             <div className={`bubble ${m.role}`}><ReactMarkdown>{m.text}</ReactMarkdown></div>
             {m.events.map((e, i) => (
               <Link key={i} className="event-card" to={`/recipes/${e.recipe_id}`}>
-                {e.type === "recipe_saved" ? <BookOpen size={18} /> : <CalendarPlus size={18} />}
-                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : e.cook_date ? `planned for ${dayName(e.cook_date)}` : "added to this week"}</span></span>
+                {e.type === "recipe_saved" ? <BookOpen size={18} /> : e.type === "recipe_revised" ? <Pencil size={18} /> : <CalendarPlus size={18} />}
+                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : e.type === "recipe_revised" ? "revised" : e.cook_date ? `planned for ${dayName(e.cook_date)}` : "added to this week"}</span></span>
               </Link>
             ))}
           </React.Fragment>

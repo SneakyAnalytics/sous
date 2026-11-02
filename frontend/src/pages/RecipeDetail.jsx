@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarPlus, Clock, Flame, Lightbulb, Star, Trash2, Users } from "lucide-react";
+import { CalendarPlus, ChefHat, Clock, Flame, Lightbulb, Star, Trash2, Undo2, Users } from "lucide-react";
 import { api } from "../api";
 import { scaleIngredient, totalMinutes } from "../lib/format";
 
@@ -14,6 +14,8 @@ export default function RecipeDetail() {
   const [added, setAdded] = useState(false);
 
   const patch = useMutation({ mutationFn: (b) => api.patchRecipe(id, b), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
+  const { data: history } = useQuery({ queryKey: ["history", id], queryFn: () => api.recipeHistory(id) });
+  const undo = useMutation({ mutationFn: () => api.undoRevision(id), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["history", id] }); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
   const del = useMutation({ mutationFn: () => api.deleteRecipe(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recipes"] }); navigate("/recipes"); } });
   const plan = useMutation({
     mutationFn: async () => { const { week_start } = await api.currentWeek(); return api.addToPlan(week_start, r.id, servings || r.servings); },
@@ -49,6 +51,12 @@ export default function RecipeDetail() {
         <button className="btn outline" disabled={plan.isPending || added} onClick={() => plan.mutate()}>
           <CalendarPlus size={18} /> {added ? "Added to this week" : "Add to this week"}
         </button>
+        <Link className="btn outline" to={`/?ask=${encodeURIComponent(`Revise my saved recipe "${r.title}" (id ${r.id}): `)}`}><ChefHat size={18} /> Revise with the chef</Link>
+        {history?.revisions.length > 0 && (
+          <button className="btn outline" disabled={undo.isPending} onClick={() => confirm(`Undo the last revision ("${history.revisions[0].reason || "no reason given"}")?`) && undo.mutate()}>
+            <Undo2 size={18} /> Undo last revision
+          </button>
+        )}
       </div>
 
       {r.chef_tips.length > 0 && (
@@ -76,6 +84,14 @@ export default function RecipeDetail() {
           </ol>
         </div>
       </div>
+      {history?.cooks.length > 0 && (
+        <div>
+          <h2>Times we've cooked it</h2>
+          <ul className="step-list" style={{ listStyle: "none", paddingLeft: 0 }}>
+            {history.cooks.map((c) => <li key={c.id}><strong>{c.cooked_on}</strong>{c.rating ? ` ${"★".repeat(c.rating)}` : ""}{c.notes && <span className="muted">: {c.notes}</span>}</li>)}
+          </ul>
+        </div>
+      )}
       <div>
         <h2>Our notes</h2>
         <textarea rows={3} defaultValue={r.notes} placeholder="What would we change next time?" onBlur={(e) => e.target.value !== r.notes && patch.mutate({ notes: e.target.value })} />

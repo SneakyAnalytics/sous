@@ -6,6 +6,7 @@ import Recipes from "./pages/Recipes";
 import RecipeDetail from "./pages/RecipeDetail";
 import Plan from "./pages/Plan";
 import Cook from "./pages/Cook";
+import Taste from "./pages/Taste";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/recipes" element={<Recipes />} />
           <Route path="/recipes/:id" element={<RecipeDetail />} />
           <Route path="/plan" element={<Plan />} />
+          <Route path="/taste" element={<Taste />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -23,6 +23,12 @@ How you work:
   to pick, then save_recipe and ask which day (or use the day they already named). Call add_to_plan with cook_date
   (YYYY-MM-DD) only once they have committed to cooking it. Never schedule a recipe they have not chosen.
 - Use plain US units (cup, tbsp, tsp, oz, lb) and whole grocery-store ingredients.
+- Their taste is listed below the plan. Lean toward what they love, avoid what they disliked, and honor their stated
+  preferences without making a speech about it. When they tell you a lasting preference ("Kadie hates cilantro",
+  "we want more fish"), call remember_preference.
+- To change a saved recipe they ask you to revise ("less spicy", "swap the beans", "make it a one-pot"), call
+  get_recipe first, then revise_recipe with only the fields that change (send complete ingredients/steps lists when
+  you change those). Say in one line what you changed. The old version is kept, so they can undo.
 - Keep chat replies short and conversational. The recipe card renders in the UI, so don't repeat the full recipe in chat."""
 
 RECIPE_SCHEMA = {
@@ -46,6 +52,15 @@ RECIPE_SCHEMA = {
 }
 
 TOOLS = [
+    {"name": "get_recipe", "description": "Read one saved recipe in full (ingredients, steps, tips).",
+     "input_schema": {"type": "object", "properties": {"recipe_id": {"type": "integer"}}, "required": ["recipe_id"]}},
+    {"name": "revise_recipe", "description": "Change a saved recipe. Send only the fields that change; lists replace the old list entirely.",
+     "input_schema": {"type": "object", "properties": {
+         "recipe_id": {"type": "integer"}, "reason": {"type": "string", "description": "Short note on what changed and why"},
+         **{k: RECIPE_SCHEMA["properties"][k] for k in ("title", "description", "servings", "prep_min", "cook_min", "ingredients", "steps", "chef_tips", "tags")}},
+         "required": ["recipe_id", "reason"]}},
+    {"name": "remember_preference", "description": "Save a lasting household taste or dietary preference so future suggestions respect it.",
+     "input_schema": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]}},
     {"name": "save_recipe", "description": "Save a complete recipe to the household's library.", "input_schema": RECIPE_SCHEMA},
     {"name": "search_my_recipes", "description": "Search saved recipes by title/tag/ingredient. Empty query lists favorites and recent.",
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
@@ -77,6 +92,22 @@ def run_tool(name: str, args: dict, events: list[dict]) -> str:
         recipe = store.create_recipe(args)
         events.append({"type": "recipe_saved", "recipe_id": recipe["id"], "title": recipe["title"]})
         return json.dumps({"saved": True, "recipe_id": recipe["id"]})
+    if name == "get_recipe":
+        r = store.get_recipe(args["recipe_id"])
+        return json.dumps(r) if r else json.dumps({"error": "no such recipe"})
+    if name == "revise_recipe":
+        fields = {k: v for k, v in args.items() if k not in ("recipe_id", "reason")}
+        if "ingredients" in fields:
+            fields["ingredients"] = _normalize_ingredients(fields["ingredients"])
+        recipe = store.revise_recipe(args["recipe_id"], fields, args.get("reason", ""))
+        if not recipe:
+            return json.dumps({"error": "no such recipe"})
+        events.append({"type": "recipe_revised", "recipe_id": recipe["id"], "title": recipe["title"]})
+        return json.dumps({"revised": True, "changed": sorted(k for k in fields if k in store.REVISABLE)})
+    if name == "remember_preference":
+        existing = store.get_profile()
+        store.set_profile((existing + "\n" if existing else "") + "- " + args["note"].strip())
+        return json.dumps({"saved": True})
     if name == "search_my_recipes":
         found = store.search_recipes(args.get("query", ""))
         return json.dumps([{"id": r["id"], "title": r["title"], "tags": r["tags"], "favorite": r["favorite"]} for r in found[:10]])
@@ -84,7 +115,7 @@ def run_tool(name: str, args: dict, events: list[dict]) -> str:
         recipe = store.get_recipe(args["recipe_id"])
         if not recipe:
             return json.dumps({"error": "no such recipe"})
-        week = store.current_week_start()
+        week = store.planning_week_start()
         day = args.get("cook_date")
         try:
             if day and not store.in_week(week, day):
@@ -99,7 +130,7 @@ def run_tool(name: str, args: dict, events: list[dict]) -> str:
 
 def plan_context() -> str:
     """Where this week's plan stands, so the chef can fill the open days instead of guessing."""
-    week = store.current_week_start()
+    week = store.planning_week_start()
     today = datetime.now(store.TZ).date()
     target = store.get_meal_target(week)
     items = store.plan_items(week)
@@ -113,6 +144,22 @@ def plan_context() -> str:
     if unscheduled:
         lines.append(f"- Planned but no day yet: {', '.join(unscheduled)}")
     return "\n".join(lines)
+
+
+def taste_context() -> str:
+    t = store.taste_summary()
+    lines = ["\nWhat we know about their taste:"]
+    if t["preferences"]:
+        lines.append("Stated preferences:\n" + t["preferences"])
+    if t["loved"]:
+        lines.append("Loved (favorites or 4-5 stars): " + "; ".join(t["loved"]))
+    if t["disliked"]:
+        lines.append("Did not enjoy (1-2 stars): " + "; ".join(t["disliked"]))
+    if t["liked_tags"]:
+        lines.append("Styles they gravitate to: " + ", ".join(t["liked_tags"]))
+    for n in t["cook_notes"][:8]:
+        lines.append(f"After cooking {n['recipe']}" + (f" ({n['rating']}/5)" if n["rating"] else "") + f": {n['notes']}")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def _history() -> list[dict]:
@@ -134,7 +181,7 @@ def chat(user_text: str) -> dict:
     events: list[dict] = []
     for _ in range(8):  # bounded tool loop
         resp = client.messages.create(
-            model=config.ANTHROPIC_MODEL, max_tokens=4096, system=SYSTEM + plan_context(), tools=TOOLS, messages=messages,
+            model=config.ANTHROPIC_MODEL, max_tokens=4096, system=SYSTEM + plan_context() + taste_context(), tools=TOOLS, messages=messages,
         )
         if resp.stop_reason != "tool_use":
             text = "".join(b.text for b in resp.content if b.type == "text").strip()

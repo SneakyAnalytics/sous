@@ -41,6 +41,27 @@ CREATE TABLE IF NOT EXISTS week_settings (
     week_start TEXT PRIMARY KEY,
     meal_target INTEGER NOT NULL
 );
+-- One row each time a recipe is cooked: how it went, and what to change next time.
+CREATE TABLE IF NOT EXISTS cook_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    cooked_on TEXT NOT NULL,
+    rating INTEGER,
+    notes TEXT NOT NULL DEFAULT ''
+);
+-- The previous version of a recipe, kept whenever the chef or a person revises it.
+CREATE TABLE IF NOT EXISTS recipe_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+    snapshot TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Free-text household preferences the chef should always respect ("no cilantro", "Kadie likes spicy").
+CREATE TABLE IF NOT EXISTS profile (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT NOT NULL,

@@ -121,6 +121,46 @@ def recipe_delete(rid: int):
     store.delete_recipe(rid)
 
 
+class CookedIn(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5)
+    notes: str = ""
+
+
+class ProfileIn(BaseModel):
+    preferences: str
+
+
+@app.post("/recipes/{rid}/cooked")
+def recipe_cooked(rid: int, body: CookedIn):
+    if not store.get_recipe(rid):
+        raise HTTPException(404)
+    return store.log_cook(rid, body.rating, body.notes)
+
+
+@app.get("/recipes/{rid}/history")
+def recipe_history(rid: int):
+    return {"cooks": store.cook_history(rid), "revisions": store.list_revisions(rid)}
+
+
+@app.post("/recipes/{rid}/undo-revision")
+def recipe_undo(rid: int):
+    restored = store.undo_revision(rid)
+    if not restored:
+        raise HTTPException(404, "nothing to undo")
+    return restored
+
+
+@app.get("/taste")
+def taste_get():
+    return store.taste_summary()
+
+
+@app.put("/taste")
+def taste_put(body: ProfileIn):
+    store.set_profile(body.preferences)
+    return store.taste_summary()
+
+
 # ---- weekly plan + grocery list ----
 class PlanAdd(BaseModel):
     recipe_id: int
@@ -161,7 +201,7 @@ def _check_day(week_start: str, day: str | None) -> None:
 
 @app.get("/plan/current-week")
 def current_week():
-    return {"week_start": store.current_week_start()}
+    return {"week_start": store.planning_week_start()}
 
 
 @app.get("/plan/{week_start}")

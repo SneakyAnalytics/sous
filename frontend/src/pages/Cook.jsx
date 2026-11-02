@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Check, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
 import { api } from "../api";
 import { fmtClock, scaleIngredient } from "../lib/format";
@@ -144,13 +144,23 @@ export default function Cook() {
 
 function Rate({ recipe }) {
   const [stars, setStars] = useState(recipe.rating || 0);
+  const [notes, setNotes] = useState("");
+  const [saved, setSaved] = useState(false);
+  const save = useMutation({ mutationFn: () => api.logCook(recipe.id, { rating: stars || null, notes }), onSuccess: () => setSaved(true) });
   return (
-    <div className="row" style={{ justifyContent: "center" }}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button key={n} className="icon-btn" aria-label={`${n} stars`} onClick={() => { setStars(n); api.patchRecipe(recipe.id, { rating: n }); }}>
-          <span style={{ color: "var(--color-gravel)", fontSize: "1.6rem", lineHeight: 1 }}>{n <= stars ? "★" : "☆"}</span>
-        </button>
-      ))}
+    <div className="stack" style={{ width: "100%", maxWidth: 520 }}>
+      <div className="row" style={{ justifyContent: "center" }}>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} className="icon-btn" aria-label={`${n} stars`} onClick={() => { setStars(n); setSaved(false); }}>
+            <span style={{ color: "var(--color-gravel)", fontSize: "1.6rem", lineHeight: 1 }}>{n <= stars ? "★" : "☆"}</span>
+          </button>
+        ))}
+      </div>
+      <textarea rows={3} value={notes} placeholder="What would we change next time? (the chef reads this)" onChange={(e) => { setNotes(e.target.value); setSaved(false); }} />
+      <button className="btn" disabled={save.isPending || saved || (!stars && !notes.trim())} onClick={() => save.mutate()}>
+        {saved ? "Saved. The chef will remember." : "Save how it went"}
+      </button>
+      {save.isError && <div className="error">{save.error.message}</div>}
     </div>
   );
 }
