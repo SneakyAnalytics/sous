@@ -1,0 +1,37 @@
+# Sous on the Beelink. Images are built by GitHub Actions and pulled from ghcr.io (deploy_to_beelink.sh).
+#   Local build instead: docker compose build
+# Sous on the Beelink. Ports are offset from the fitness tracker (3000/8000) so both run side by side.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  api:
+    image: ghcr.io/sneakyanalytics/sous-api:${APP_VERSION:-main}
+    build: ./backend
+    container_name: sous-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TZ=America/Los_Angeles
+    volumes:
+      - sous_data:/app/data
+    ports:
+      - "8100:8000"
+    mem_limit: 1536m   # headless Chromium for the Safeway lookups needs headroom
+    logging: *logging
+
+  web:
+    image: ghcr.io/sneakyanalytics/sous-web:${APP_VERSION:-main}
+    build: ./frontend
+    container_name: sous-web
+    restart: unless-stopped
+    ports:
+      - "3100:80"
+    depends_on:
+      - api
+    mem_limit: 128m
+    logging: *logging
+
+volumes:
+  sous_data:
