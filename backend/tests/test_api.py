@@ -45,3 +45,37 @@ def test_import_json_ld():
     r = parse_recipe_html(page, "http://x")
     assert r["servings"] == 4 and r["cook_min"] == 20 and r["ingredients"][1]["note"] == "diced"
     assert r["steps"] == [{"text": "Simmer."}]
+
+
+def test_meal_target_and_dated_plan_items(client):
+    rid = client.post("/recipes", json=RECIPE).json()["id"]
+    week = client.get("/plan/current-week").json()["week_start"]
+    assert client.get(f"/plan/{week}").json()["meal_target"] is None
+    assert client.put(f"/plan/{week}/target", json={"meal_target": 4}).json()["meal_target"] == 4
+    assert client.put(f"/plan/{week}/target", json={"meal_target": 0}).status_code == 422
+
+    from app import store
+    thursday = store.week_days(week)[3]
+    plan = client.post(f"/plan/{week}/items", json={"recipe_id": rid, "cook_date": thursday}).json()
+    item = plan["items"][0]
+    assert item["cook_date"] == thursday and item["servings"] == 2
+
+    assert client.post(f"/plan/{week}/items", json={"recipe_id": rid, "cook_date": "2001-01-01"}).status_code == 422
+    assert client.patch(f"/plan/items/{item['id']}", json={"cook_date": store.week_days(week)[5]}).status_code == 200
+    assert client.patch(f"/plan/items/{item['id']}", json={"cook_date": "nope"}).status_code == 422
+    assert client.patch("/plan/items/999", json={"servings": 2}).status_code == 404
+    assert client.get(f"/plan/{week}").json()["items"][0]["cook_date"] == store.week_days(week)[5]
+
+
+def test_chef_plan_context_and_tool(client):
+    from app import chef, store
+    rid = client.post("/recipes", json=RECIPE).json()["id"]
+    week = store.current_week_start()
+    store.set_meal_target(week, 3)
+    events = []
+    day = store.week_days(week)[1]
+    assert '"added": true' in chef.run_tool("add_to_plan", {"recipe_id": rid, "cook_date": day}, events)
+    assert events[0]["cook_date"] == day
+    assert "error" in chef.run_tool("add_to_plan", {"recipe_id": rid, "cook_date": "2001-01-01"}, events)
+    ctx = chef.plan_context()
+    assert "want to prep: 3" in ctx and "Pasta" in ctx and "open" in ctx

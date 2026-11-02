@@ -97,3 +97,26 @@ input[type=number] { width: 5rem; }
   .cols { grid-template-columns: 1fr; }
   .bubble { max-width: 94%; }
 }
+
+/* ---- weekly planner ---- */
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; background: var(--color-surface); }
+.stepper button { background: none; border: 0; width: 2.2rem; height: 2.2rem; font-size: 1.2rem; cursor: pointer; }
+.stepper button:disabled { opacity: .35; cursor: not-allowed; }
+.stepper span { padding: 0 .8rem; }
+.week-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .5rem; }
+.day { display: flex; flex-direction: column; gap: .4rem; padding: .6rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); min-height: 8rem; }
+.day.today { border-color: var(--color-forest); box-shadow: 0 0 0 1px var(--color-forest); }
+.day.past { opacity: .65; }
+.day-head { display: flex; flex-direction: column; line-height: 1.2; }
+.day-head span { font-size: .8rem; }
+.meal { display: flex; flex-direction: column; gap: .35rem; padding: .45rem; border-radius: 8px; background: var(--color-cream); }
+.meal-title { font-weight: 600; text-decoration: none; color: inherit; overflow-wrap: anywhere; }
+.meal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-size: .8rem; }
+.meal-actions input { width: 3.2rem; padding: .15rem .3rem; }
+.meal-actions select { padding: .15rem .3rem; max-width: 100%; font-size: .8rem; }
+.add-meal { margin-top: auto; display: inline-flex; align-items: center; justify-content: center; gap: .25rem; padding: .35rem; border: 1px dashed var(--color-border); border-radius: 8px; background: none; color: var(--color-text-secondary); cursor: pointer; font-size: .8rem; }
+.add-meal:hover { border-color: var(--color-forest); color: var(--color-forest); }
+.picker .pick-list { display: flex; flex-direction: column; max-height: 18rem; overflow-y: auto; }
+.pick { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem .4rem; border: 0; border-bottom: 1px solid var(--color-border); background: none; text-align: left; cursor: pointer; font: inherit; }
+.pick:hover { background: var(--color-cream); }
+@media (max-width: 900px) { .week-grid { grid-template-columns: 1fr; } .day { min-height: 0; flex-direction: column; } .day-head { flex-direction: row; gap: .5rem; align-items: baseline; } }

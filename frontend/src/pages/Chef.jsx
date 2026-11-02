@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, CalendarPlus, ChefHat, Send, Trash2 } from "lucide-react";
 import { api } from "../api";
+
+const dayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
 
 const STARTERS = [
   "What's a great weeknight dinner under 40 minutes?",
@@ -15,7 +17,8 @@ const STARTERS = [
 export default function Chef() {
   const qc = useQueryClient();
   const { data: history = [] } = useQuery({ queryKey: ["chat"], queryFn: api.chat });
-  const [text, setText] = useState("");
+  const [sp] = useSearchParams();
+  const [text, setText] = useState(sp.get("ask") || ""); // the planner links here with a day prefilled
   const [pending, setPending] = useState(null); // the user's message shown while the chef thinks
   const endRef = useRef(null);
 
@@ -58,7 +61,7 @@ export default function Chef() {
             {m.events.map((e, i) => (
               <Link key={i} className="event-card" to={`/recipes/${e.recipe_id}`}>
                 {e.type === "recipe_saved" ? <BookOpen size={18} /> : <CalendarPlus size={18} />}
-                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : "added to this week"}</span></span>
+                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : e.cook_date ? `planned for ${dayName(e.cook_date)}` : "added to this week"}</span></span>
               </Link>
             ))}
           </React.Fragment>

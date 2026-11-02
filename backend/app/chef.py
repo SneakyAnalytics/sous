@@ -1,5 +1,6 @@
 """Chef Claude: a coaching chat with tools. The model writes and coaches; all list math lives in grocery.py."""
 import json
+from datetime import date, datetime
 
 import anthropic
 
@@ -16,8 +17,11 @@ How you work:
   optional tip. Put your best coaching in chef_tips (3-5 tips: the technique that separates good from great).
 - Prefer dishes with a strong reputation: classics and widely-loved recipes from respected sources. Never invent
   ratings or claim a specific star count; say what makes the dish well-loved instead.
-- Use search_my_recipes before suggesting something they may already have saved. Use add_to_plan only when they
-  say they want to cook it this week.
+- Use search_my_recipes before suggesting something they may already have saved, and mention saved favorites first
+  since they often want to cook what they already know they enjoy.
+- Planning: the household decides how many meals to prep and which day each lands on. Suggest options, wait for them
+  to pick, then save_recipe and ask which day (or use the day they already named). Call add_to_plan with cook_date
+  (YYYY-MM-DD) only once they have committed to cooking it. Never schedule a recipe they have not chosen.
 - Use plain US units (cup, tbsp, tsp, oz, lb) and whole grocery-store ingredients.
 - Keep chat replies short and conversational. The recipe card renders in the UI, so don't repeat the full recipe in chat."""
 
@@ -45,9 +49,11 @@ TOOLS = [
     {"name": "save_recipe", "description": "Save a complete recipe to the household's library.", "input_schema": RECIPE_SCHEMA},
     {"name": "search_my_recipes", "description": "Search saved recipes by title/tag/ingredient. Empty query lists favorites and recent.",
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-    {"name": "add_to_plan", "description": "Add a saved recipe to this week's cooking plan.",
-     "input_schema": {"type": "object", "properties": {"recipe_id": {"type": "integer"}, "servings": {"type": "integer"}},
-                      "required": ["recipe_id"]}},
+    {"name": "add_to_plan", "description": "Add a saved recipe to this week's cooking plan, on a specific day when known.",
+     "input_schema": {"type": "object", "properties": {
+         "recipe_id": {"type": "integer"}, "servings": {"type": "integer"},
+         "cook_date": {"type": "string", "description": "YYYY-MM-DD, must be a day in the current week"}},
+         "required": ["recipe_id"]}},
 ]
 
 
@@ -78,10 +84,35 @@ def run_tool(name: str, args: dict, events: list[dict]) -> str:
         recipe = store.get_recipe(args["recipe_id"])
         if not recipe:
             return json.dumps({"error": "no such recipe"})
-        store.add_plan_item(store.current_week_start(), recipe["id"], args.get("servings") or recipe["servings"])
-        events.append({"type": "added_to_plan", "recipe_id": recipe["id"], "title": recipe["title"]})
+        week = store.current_week_start()
+        day = args.get("cook_date")
+        try:
+            if day and not store.in_week(week, day):
+                return json.dumps({"error": f"cook_date must be one of {store.week_days(week)}"})
+        except ValueError:
+            return json.dumps({"error": "cook_date must be YYYY-MM-DD"})
+        store.add_plan_item(week, recipe["id"], args.get("servings") or recipe["servings"], day)
+        events.append({"type": "added_to_plan", "recipe_id": recipe["id"], "title": recipe["title"], "cook_date": day})
         return json.dumps({"added": True})
     return json.dumps({"error": f"unknown tool {name}"})
+
+
+def plan_context() -> str:
+    """Where this week's plan stands, so the chef can fill the open days instead of guessing."""
+    week = store.current_week_start()
+    today = datetime.now(store.TZ).date()
+    target = store.get_meal_target(week)
+    items = store.plan_items(week)
+    by_day = {d: [i["recipe"]["title"] for i in items if i["cook_date"] == d and i["recipe"]] for d in store.week_days(week)}
+    unscheduled = [i["recipe"]["title"] for i in items if not i["cook_date"] and i["recipe"]]
+    lines = [f"\nThis week's plan (today is {today:%A %Y-%m-%d}; week starts Monday {week}):",
+             f"- Meals they want to prep: {target if target else 'not set yet (ask how many)'}; planned so far: {len(items)}"]
+    for d, titles in by_day.items():
+        label = date.fromisoformat(d).strftime("%a %m-%d")
+        lines.append(f"- {label} ({d}): {', '.join(titles) if titles else 'open'}")
+    if unscheduled:
+        lines.append(f"- Planned but no day yet: {', '.join(unscheduled)}")
+    return "\n".join(lines)
 
 
 def _history() -> list[dict]:
@@ -103,7 +134,7 @@ def chat(user_text: str) -> dict:
     events: list[dict] = []
     for _ in range(8):  # bounded tool loop
         resp = client.messages.create(
-            model=config.ANTHROPIC_MODEL, max_tokens=4096, system=SYSTEM, tools=TOOLS, messages=messages,
+            model=config.ANTHROPIC_MODEL, max_tokens=4096, system=SYSTEM + plan_context(), tools=TOOLS, messages=messages,
         )
         if resp.stop_reason != "tool_use":
             text = "".join(b.text for b in resp.content if b.type == "text").strip()

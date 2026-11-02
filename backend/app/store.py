@@ -17,6 +17,16 @@ def valid_week(week_start: str) -> str:
     return week_start
 
 
+def in_week(week_start: str, day: str) -> bool:
+    start = date.fromisoformat(week_start)
+    return 0 <= (date.fromisoformat(day) - start).days < 7
+
+
+def week_days(week_start: str) -> list[str]:
+    start = date.fromisoformat(week_start)
+    return [(start + timedelta(days=i)).isoformat() for i in range(7)]
+
+
 # ---- recipes ----
 def create_recipe(data: dict) -> dict:
     with connect() as c:
@@ -83,6 +93,12 @@ def remove_plan_item(item_id: int) -> None:
         c.execute("DELETE FROM plan_items WHERE id=?", (item_id,))
 
 
+def get_plan_item(item_id: int) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM plan_items WHERE id=?", (item_id,)).fetchone()
+    return dict(row) if row else None
+
+
 def update_plan_item(item_id: int, fields: dict) -> None:
     with connect() as c:
         for k in ("servings", "cook_date"):
@@ -100,6 +116,21 @@ def plan_items(week_start: str) -> list[dict]:
         item["recipe"] = get_recipe(item["recipe_id"])
         out.append(item)
     return out
+
+
+def get_meal_target(week_start: str) -> int | None:
+    with connect() as c:
+        row = c.execute("SELECT meal_target FROM week_settings WHERE week_start=?", (week_start,)).fetchone()
+    return row["meal_target"] if row else None
+
+
+def set_meal_target(week_start: str, target: int | None) -> None:
+    with connect() as c:
+        if target is None:
+            c.execute("DELETE FROM week_settings WHERE week_start=?", (week_start,))
+        else:
+            c.execute("INSERT INTO week_settings (week_start, meal_target) VALUES (?,?)"
+                      " ON CONFLICT(week_start) DO UPDATE SET meal_target=excluded.meal_target", (week_start, target))
 
 
 def list_statuses(week_start: str) -> dict[str, str]:

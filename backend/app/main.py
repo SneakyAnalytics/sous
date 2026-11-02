@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import chef, grocery, importer, store
 from .db import init_db
@@ -128,6 +128,10 @@ class PlanAdd(BaseModel):
     cook_date: str | None = None
 
 
+class TargetIn(BaseModel):
+    meal_target: int | None = Field(default=None, ge=1, le=14)
+
+
 class PlanPatch(BaseModel):
     servings: int | None = None
     cook_date: str | None = None
@@ -144,6 +148,17 @@ def _week(week_start: str) -> str:
         raise HTTPException(422, "week_start must be YYYY-MM-DD")
 
 
+def _check_day(week_start: str, day: str | None) -> None:
+    if day is None:
+        return
+    try:
+        ok = store.in_week(week_start, day)
+    except ValueError:
+        ok = False
+    if not ok:
+        raise HTTPException(422, "cook_date must be a YYYY-MM-DD day inside that week")
+
+
 @app.get("/plan/current-week")
 def current_week():
     return {"week_start": store.current_week_start()}
@@ -157,7 +172,13 @@ def plan_get(week_start: str):
     shopping = grocery.build_list([i for i in items if i["recipe"]])
     for s in shopping:
         s["status"] = statuses.get(s["key"])
-    return {"week_start": week_start, "items": items, "list": shopping}
+    return {"week_start": week_start, "meal_target": store.get_meal_target(week_start), "items": items, "list": shopping}
+
+
+@app.put("/plan/{week_start}/target")
+def plan_target(week_start: str, body: TargetIn):
+    store.set_meal_target(_week(week_start), body.meal_target)
+    return plan_get(week_start)
 
 
 @app.post("/plan/{week_start}/items")
@@ -165,13 +186,20 @@ def plan_add(week_start: str, body: PlanAdd):
     recipe = store.get_recipe(body.recipe_id)
     if not recipe:
         raise HTTPException(404, "recipe not found")
-    store.add_plan_item(_week(week_start), recipe["id"], body.servings or recipe["servings"], body.cook_date)
+    week_start = _week(week_start)
+    _check_day(week_start, body.cook_date)
+    store.add_plan_item(week_start, recipe["id"], body.servings or recipe["servings"], body.cook_date)
     return plan_get(week_start)
 
 
 @app.patch("/plan/items/{item_id}")
 def plan_patch(item_id: int, body: PlanPatch):
-    store.update_plan_item(item_id, body.model_dump(exclude_unset=True))
+    fields = body.model_dump(exclude_unset=True)
+    item = store.get_plan_item(item_id)
+    if not item:
+        raise HTTPException(404)
+    _check_day(item["week_start"], fields.get("cook_date"))
+    store.update_plan_item(item_id, fields)
 
 
 @app.delete("/plan/items/{item_id}")

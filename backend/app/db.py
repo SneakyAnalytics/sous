@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS list_status (
     status TEXT NOT NULL,            -- have | need
     PRIMARY KEY (week_start, key)
 );
+-- How many meals the household intends to prep this week.
+CREATE TABLE IF NOT EXISTS week_settings (
+    week_start TEXT PRIMARY KEY,
+    meal_target INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT NOT NULL,

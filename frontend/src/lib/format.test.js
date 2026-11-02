@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtClock, fmtQty, scaleIngredient, shiftWeek } from "./format";
+import { fmtClock, fmtQty, scaleIngredient, shiftWeek, weekDays } from "./format";
 
 describe("format", () => {
   it("formats fractions", () => {
@@ -14,4 +14,8 @@ describe("format", () => {
   });
   it("formats clocks", () => expect(fmtClock(605)).toBe("10:05"));
   it("shifts weeks across a month boundary", () => expect(shiftWeek("2026-10-26", 1)).toBe("2026-11-02"));
+  it("lists the seven days of a week, across a month end", () => {
+    const days = weekDays("2026-10-26");
+    expect(days.map((d) => d.iso)).toEqual(["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
+  });
 });

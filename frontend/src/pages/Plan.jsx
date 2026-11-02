@@ -1,24 +1,45 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Flame, ShoppingCart, X } from "lucide-react";
+import { ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
 import { api } from "../api";
-import { shiftWeek, weekLabel } from "../lib/format";
+import { shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
 import CartReview from "../components/CartReview";
+
+function MealRow({ it, days, onMove, onServings, onRemove }) {
+  return (
+    <div className="meal">
+      <Link to={`/recipes/${it.recipe_id}`} className="meal-title">{it.recipe.title}</Link>
+      <div className="meal-actions">
+        <label className="muted" title="Servings">Serves <input type="number" min="1" defaultValue={it.servings}
+          onBlur={(e) => +e.target.value !== it.servings && onServings(Math.max(1, +e.target.value || 1))} /></label>
+        <select aria-label="Move to day" value={it.cook_date || ""} onChange={(e) => e.target.value && onMove(e.target.value)}>
+          {!it.cook_date && <option value="">Pick a day…</option>}
+          {days.map((d) => <option key={d.iso} value={d.iso}>{d.weekday} {d.date}</option>)}
+        </select>
+        <Link className="btn ember small" to={`/cook/${it.recipe_id}?servings=${it.servings}`}><Flame size={14} /> Cook</Link>
+        <button className="icon-btn" aria-label="Remove" onClick={onRemove}><X size={16} /></button>
+      </div>
+    </div>
+  );
+}
 
 export default function Plan() {
   const qc = useQueryClient();
   const { data: cw } = useQuery({ queryKey: ["current-week"], queryFn: api.currentWeek });
   const [offset, setOffset] = useState(0);
   const [reviewing, setReviewing] = useState(false);
+  const [picking, setPicking] = useState(null); // ISO day the recipe picker is open for
+  const [filter, setFilter] = useState("");
   const week = cw ? shiftWeek(cw.week_start, offset) : null;
   const { data: plan } = useQuery({ queryKey: ["plan", week], queryFn: () => api.plan(week), enabled: !!week });
   const { data: recipes = [] } = useQuery({ queryKey: ["recipes", ""], queryFn: () => api.recipes("") });
   const refresh = () => qc.invalidateQueries({ queryKey: ["plan", week] });
 
-  const add = useMutation({ mutationFn: (id) => api.addToPlan(week, id), onSuccess: refresh });
+  const add = useMutation({ mutationFn: ({ id, day }) => api.addToPlan(week, id, day), onSuccess: () => { setPicking(null); setFilter(""); refresh(); } });
   const remove = useMutation({ mutationFn: api.removePlanItem, onSuccess: refresh });
-  const servings = useMutation({ mutationFn: ({ id, n }) => api.patchPlanItem(id, { servings: n }), onSuccess: refresh });
+  const patch = useMutation({ mutationFn: ({ id, body }) => api.patchPlanItem(id, body), onSuccess: refresh });
+  const target = useMutation({ mutationFn: (n) => api.setMealTarget(week, n), onSuccess: refresh });
   const setStatus = useMutation({
     mutationFn: ({ key, status }) => api.setStatus(week, key, status),
     onMutate: async ({ key, status }) => { // optimistic: the toggle should feel instant
@@ -35,7 +56,11 @@ export default function Plan() {
   const unanswered = plan.list.filter((i) => !i.status).length;
   const needed = plan.list.filter((i) => i.status === "need");
   const groups = plan.list.reduce((acc, i) => ((acc[i.category] ||= []).push(i), acc), {});
-  const planned = new Set(plan.items.map((i) => i.recipe_id));
+  const days = weekDays(week);
+  const today = todayIso();
+  const unscheduled = plan.items.filter((it) => !it.cook_date);
+  const q = filter.trim().toLowerCase();
+  const pickable = recipes.filter((r) => !q || r.title.toLowerCase().includes(q) || r.tags.some((t) => t.toLowerCase().includes(q)));
 
   return (
     <div className="page stack">
@@ -49,22 +74,60 @@ export default function Plan() {
       </div>
 
       <section className="stack">
-        <h2>Meals</h2>
-        {plan.items.length === 0 && <p className="muted">Nothing planned. Pick recipes below, or ask the Chef to add one.</p>}
-        {plan.items.map((it) => (
-          <div key={it.id} className="card row">
-            <Link to={`/recipes/${it.recipe_id}`} style={{ flex: 1, fontWeight: 600, textDecoration: "none" }}>{it.recipe.title}</Link>
-            <label className="muted">Servings <input type="number" min="1" defaultValue={it.servings} onBlur={(e) => +e.target.value !== it.servings && servings.mutate({ id: it.id, n: Math.max(1, +e.target.value || 1) })} /></label>
-            <Link className="btn ember small" to={`/cook/${it.recipe_id}?servings=${it.servings}`}><Flame size={14} /> Cook</Link>
-            <button className="icon-btn" aria-label="Remove" onClick={() => remove.mutate(it.id)}><X size={16} /></button>
-          </div>
-        ))}
         <div className="row">
-          <select defaultValue="" onChange={(e) => { if (e.target.value) { add.mutate(+e.target.value); e.target.value = ""; } }} style={{ maxWidth: 320 }}>
-            <option value="">+ Add a recipe…</option>
-            {recipes.filter((r) => !planned.has(r.id)).map((r) => <option key={r.id} value={r.id}>{r.title}</option>)}
-          </select>
+          <h2 style={{ margin: 0 }}>Meals</h2>
+          <div className="stepper" role="group" aria-label="Meals to prep this week">
+            <button aria-label="Fewer meals" disabled={!plan.meal_target || plan.meal_target <= 1} onClick={() => target.mutate(plan.meal_target - 1)}>−</button>
+            <span><strong>{plan.meal_target ?? "?"}</strong> to prep</span>
+            <button aria-label="More meals" disabled={plan.meal_target >= 14} onClick={() => target.mutate((plan.meal_target ?? plan.items.length) + 1)}>+</button>
+          </div>
+          <span className="muted">
+            {plan.meal_target == null ? "Set how many meals you're prepping this week."
+              : plan.items.length >= plan.meal_target ? `All ${plan.meal_target} planned` : `${plan.items.length} of ${plan.meal_target} planned`}
+          </span>
         </div>
+
+        <div className="week-grid">
+          {days.map((d) => {
+            const meals = plan.items.filter((it) => it.cook_date === d.iso);
+            return (
+              <div key={d.iso} className={`day ${d.iso === today ? "today" : ""} ${d.iso < today ? "past" : ""}`}>
+                <div className="day-head"><strong>{d.weekday}</strong><span className="muted">{d.date}</span></div>
+                {meals.map((it) => <MealRow key={it.id} it={it} days={days} onMove={(iso) => patch.mutate({ id: it.id, body: { cook_date: iso } })}
+                  onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onRemove={() => remove.mutate(it.id)} />)}
+                <button className="add-meal" onClick={() => setPicking(picking === d.iso ? null : d.iso)}><Plus size={14} /> {meals.length ? "Add another" : "Add a meal"}</button>
+              </div>
+            );
+          })}
+        </div>
+
+        {unscheduled.length > 0 && (
+          <div className="card stack">
+            <strong>Planned, no day yet</strong>
+            {unscheduled.map((it) => <MealRow key={it.id} it={it} days={days} onMove={(iso) => patch.mutate({ id: it.id, body: { cook_date: iso } })}
+              onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onRemove={() => remove.mutate(it.id)} />)}
+          </div>
+        )}
+
+        {picking && (
+          <div className="card stack picker">
+            <div className="row">
+              <strong style={{ flex: 1 }}>Pick a saved recipe for {days.find((d) => d.iso === picking)?.weekday}</strong>
+              <Link className="btn outline small" to={`/?ask=${encodeURIComponent(`Suggest 3 dinners for ${days.find((d) => d.iso === picking)?.weekday}. `)}`}><ChefHat size={14} /> Ask the chef instead</Link>
+              <button className="icon-btn" aria-label="Close" onClick={() => setPicking(null)}><X size={16} /></button>
+            </div>
+            <input type="search" placeholder="Search your recipes…" value={filter} onChange={(e) => setFilter(e.target.value)} autoFocus />
+            {pickable.length === 0 && <p className="muted">{recipes.length ? "No matches." : "No saved recipes yet. Ask the chef for ideas."}</p>}
+            <div className="pick-list">
+              {pickable.map((r) => (
+                <button key={r.id} className="pick" onClick={() => add.mutate({ id: r.id, day: picking })}>
+                  <span>{r.favorite && <Star size={13} fill="currentColor" />} {r.title}</span>
+                  <span className="muted">{[totalMinutes(r) && `${totalMinutes(r)} min`, r.rating && `${r.rating}★`].filter(Boolean).join(" · ")}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {plan.list.length > 0 && (

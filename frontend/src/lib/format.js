@@ -37,3 +37,18 @@ export function shiftWeek(iso, weeks) {
   const dt = new Date(y, m - 1, d + weeks * 7);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
+
+/** The seven YYYY-MM-DD days of the week starting at `weekStart`, with a short label ("Mon", "Oct 26"). */
+export function weekDays(weekStart) {
+  const [y, m, d] = weekStart.split("-").map(Number);
+  return Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(y, m - 1, d + i);
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    return { iso, weekday: dt.toLocaleDateString(undefined, { weekday: "short" }), date: dt.toLocaleDateString(undefined, { month: "short", day: "numeric" }) };
+  });
+}
+
+export function todayIso() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
