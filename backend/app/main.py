@@ -2,10 +2,10 @@ import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import chef, grocery, importer, shopper, store
+from . import chef, gcal, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
 
@@ -175,6 +175,7 @@ class TargetIn(BaseModel):
 class PlanPatch(BaseModel):
     servings: int | None = None
     cook_date: str | None = None
+    cook_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class StatusIn(BaseModel):
@@ -186,6 +187,24 @@ def _week(week_start: str) -> str:
         return store.valid_week(week_start)
     except ValueError:
         raise HTTPException(422, "week_start must be YYYY-MM-DD")
+
+
+_last_sync: dict = {}
+
+
+def _calendar_sync(week_start: str) -> dict:
+    """Push the week to Google Calendar. Never raises: a calendar problem must not break planning."""
+    try:
+        counts = gcal.sync_week(week_start)
+        _last_sync.update(week_start=week_start, ok=True, counts=counts, error=None)
+    except Exception as e:
+        _last_sync.update(week_start=week_start, ok=False, counts=None, error=str(e))
+    return dict(_last_sync)
+
+
+def _sync_soon(background: BackgroundTasks, week_start: str) -> None:
+    if gcal.configured():
+        background.add_task(_calendar_sync, week_start)
 
 
 def _check_day(week_start: str, day: str | None) -> None:
@@ -222,29 +241,49 @@ def plan_target(week_start: str, body: TargetIn):
 
 
 @app.post("/plan/{week_start}/items")
-def plan_add(week_start: str, body: PlanAdd):
+def plan_add(week_start: str, body: PlanAdd, background: BackgroundTasks):
     recipe = store.get_recipe(body.recipe_id)
     if not recipe:
         raise HTTPException(404, "recipe not found")
     week_start = _week(week_start)
     _check_day(week_start, body.cook_date)
     store.add_plan_item(week_start, recipe["id"], body.servings or recipe["servings"], body.cook_date)
+    _sync_soon(background, week_start)
     return plan_get(week_start)
 
 
 @app.patch("/plan/items/{item_id}")
-def plan_patch(item_id: int, body: PlanPatch):
+def plan_patch(item_id: int, body: PlanPatch, background: BackgroundTasks):
     fields = body.model_dump(exclude_unset=True)
     item = store.get_plan_item(item_id)
     if not item:
         raise HTTPException(404)
     _check_day(item["week_start"], fields.get("cook_date"))
     store.update_plan_item(item_id, fields)
+    _sync_soon(background, item["week_start"])
 
 
 @app.delete("/plan/items/{item_id}")
-def plan_remove(item_id: int):
+def plan_remove(item_id: int, background: BackgroundTasks):
+    item = store.get_plan_item(item_id)
     store.remove_plan_item(item_id)
+    if item:
+        _sync_soon(background, item["week_start"])
+
+
+@app.get("/calendar/status")
+def calendar_status():
+    return {"configured": gcal.configured(), "dinner_time": gcal.dinner_time(), "last_sync": _last_sync or None}
+
+
+@app.post("/plan/{week_start}/calendar-sync")
+def calendar_sync(week_start: str):
+    if not gcal.configured():
+        raise HTTPException(503, "Google Calendar is not set up on this server")
+    result = _calendar_sync(_week(week_start))
+    if not result["ok"]:
+        raise HTTPException(502, result["error"])
+    return result
 
 
 @app.put("/plan/{week_start}/list/{key:path}")

@@ -16,6 +16,9 @@ services:
       - TZ=America/Los_Angeles
     volumes:
       - sous_data:/app/data
+      # Read-only copy of the Google token (Task_Chore_Syncing's token_jake.pickle). Set GOOGLE_TOKEN_FILE and
+      # GOOGLE_TOKEN_PATH=/run/google/token.pickle in .env to turn the calendar on; otherwise an empty placeholder is mounted.
+      - ${GOOGLE_TOKEN_FILE:-./google_token.pickle}:/run/google/token.pickle:ro
     ports:
       - "8100:8000"
     mem_limit: 1536m   # headless Chromium for the Safeway lookups needs headroom

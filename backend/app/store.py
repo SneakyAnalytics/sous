@@ -108,7 +108,7 @@ def get_plan_item(item_id: int) -> dict | None:
 
 def update_plan_item(item_id: int, fields: dict) -> None:
     with connect() as c:
-        for k in ("servings", "cook_date"):
+        for k in ("servings", "cook_date", "cook_time"):
             if k in fields:
                 c.execute(f"UPDATE plan_items SET {k}=? WHERE id=?", (fields[k], item_id))
 
@@ -219,6 +219,17 @@ def undo_revision(rid: int) -> dict | None:
             return None
         c.execute("DELETE FROM recipe_revisions WHERE id=?", (row["id"],))
     return update_recipe(rid, json.loads(row["snapshot"]))
+
+
+def get_setting(key: str) -> str | None:
+    with connect() as c:
+        row = c.execute("SELECT value FROM profile WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str) -> None:
+    with connect() as c:
+        c.execute("INSERT INTO profile (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
 def get_profile() -> str:

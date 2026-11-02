@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 import anthropic
 
-from . import config, store
+from . import config, gcal, store
 from .grocery import parse_ingredient
 
 SYSTEM = """You are Chef Claude, a warm, exacting master chef coaching two home cooks (a couple) in their kitchen.
@@ -141,6 +141,15 @@ def plan_context() -> str:
     for d, titles in by_day.items():
         label = date.fromisoformat(d).strftime("%a %m-%d")
         lines.append(f"- {label} ({d}): {', '.join(titles) if titles else 'open'}")
+    try:  # busy times are a bonus; planning must work without the calendar
+        busy = gcal.busy_by_day(week) if gcal.configured() else {}
+    except Exception:
+        busy = {}
+    if any(busy.values()):
+        lines.append("Already on their calendars (suggest quick meals on busy evenings, longer ones on free days):")
+        for d, evs in busy.items():
+            if evs:
+                lines.append(f"- {date.fromisoformat(d):%a %m-%d}: " + "; ".join(evs))
     if unscheduled:
         lines.append(f"- Planned but no day yet: {', '.join(unscheduled)}")
     return "\n".join(lines)

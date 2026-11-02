@@ -73,7 +73,16 @@ if [[ ${#ENV_KEYS[@]} -gt 0 ]]; then
     printf '%s\n' "$line"
   done | merge_env
 fi
-echo "APP_VERSION=$VERSION" | merge_env
+# The compose file mounts this path even when the calendar is off, so make sure a placeholder file exists.
+remote "if not exist $REMOTE_DIR\\google_token.pickle type nul > $REMOTE_DIR\\google_token.pickle" >/dev/null
+{
+  echo "APP_VERSION=$VERSION"
+  echo "SOUS_URL=http://${BEELINK_HOST}:3100"
+  if [[ -n "${GOOGLE_TOKEN_FILE_ON_BEELINK:-}" ]]; then
+    echo "GOOGLE_TOKEN_FILE=$GOOGLE_TOKEN_FILE_ON_BEELINK"
+    echo "GOOGLE_TOKEN_PATH=/run/google/token.pickle"
+  fi
+} | merge_env
 
 echo "⬇️  Pulling images and restarting..."
 remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose pull && docker compose up -d --remove-orphans"

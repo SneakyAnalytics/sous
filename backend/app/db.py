@@ -78,6 +78,9 @@ def init_db() -> None:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
         conn.executescript(SCHEMA)
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_items)")}
+        if "cook_time" not in cols:  # added after the first deploy
+            conn.execute("ALTER TABLE plan_items ADD COLUMN cook_time TEXT")
 
 
 @contextmanager

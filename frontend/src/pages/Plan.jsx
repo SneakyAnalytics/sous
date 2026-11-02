@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
+import { CalendarCheck, ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
 import { api } from "../api";
 import { shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
 import CartReview from "../components/CartReview";
 
-function MealRow({ it, days, onMove, onServings, onRemove }) {
+function MealRow({ it, days, defaultTime, onMove, onServings, onTime, onRemove }) {
   return (
     <div className="meal">
       <Link to={`/recipes/${it.recipe_id}`} className="meal-title">{it.recipe.title}</Link>
@@ -17,6 +17,7 @@ function MealRow({ it, days, onMove, onServings, onRemove }) {
           {!it.cook_date && <option value="">Pick a day…</option>}
           {days.map((d) => <option key={d.iso} value={d.iso}>{d.weekday} {d.date}</option>)}
         </select>
+        {it.cook_date && <input type="time" aria-label="Dinner time" value={it.cook_time || defaultTime || ""} onChange={(e) => e.target.value && onTime(e.target.value)} />}
         <Link className="btn ember small" to={`/cook/${it.recipe_id}?servings=${it.servings}`}><Flame size={14} /> Cook</Link>
         <button className="icon-btn" aria-label="Remove" onClick={onRemove}><X size={16} /></button>
       </div>
@@ -39,6 +40,8 @@ export default function Plan() {
   const add = useMutation({ mutationFn: ({ id, day }) => api.addToPlan(week, id, day), onSuccess: () => { setPicking(null); setFilter(""); refresh(); } });
   const remove = useMutation({ mutationFn: api.removePlanItem, onSuccess: refresh });
   const patch = useMutation({ mutationFn: ({ id, body }) => api.patchPlanItem(id, body), onSuccess: refresh });
+  const { data: cal } = useQuery({ queryKey: ["calendar"], queryFn: api.calendarStatus });
+  const calSync = useMutation({ mutationFn: () => api.calendarSync(week), onSettled: () => qc.invalidateQueries({ queryKey: ["calendar"] }) });
   const target = useMutation({ mutationFn: (n) => api.setMealTarget(week, n), onSuccess: refresh });
   const setStatus = useMutation({
     mutationFn: ({ key, status }) => api.setStatus(week, key, status),
@@ -87,6 +90,16 @@ export default function Plan() {
           </span>
         </div>
 
+        {cal?.configured && (
+          <div className="row muted">
+            <CalendarCheck size={16} />
+            <span>Meals sync to your Google "Meals" calendar (default {cal.dinner_time}).
+              {calSync.isError ? <span className="error"> {calSync.error.message}</span>
+                : calSync.data?.counts ? ` Synced: ${calSync.data.counts.created} added, ${calSync.data.counts.updated} changed, ${calSync.data.counts.deleted} removed.`
+                : cal.last_sync && !cal.last_sync.ok ? <span className="error"> Last sync failed: {cal.last_sync.error}</span> : ""}</span>
+            <button className="btn outline small" disabled={calSync.isPending} onClick={() => calSync.mutate()}>{calSync.isPending ? "Syncing…" : "Sync now"}</button>
+          </div>
+        )}
         <div className="week-grid">
           {days.map((d) => {
             const meals = plan.items.filter((it) => it.cook_date === d.iso);
@@ -94,7 +107,7 @@ export default function Plan() {
               <div key={d.iso} className={`day ${d.iso === today ? "today" : ""} ${d.iso < today ? "past" : ""}`}>
                 <div className="day-head"><strong>{d.weekday}</strong><span className="muted">{d.date}</span></div>
                 {meals.map((it) => <MealRow key={it.id} it={it} days={days} onMove={(iso) => patch.mutate({ id: it.id, body: { cook_date: iso } })}
-                  onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onRemove={() => remove.mutate(it.id)} />)}
+                  onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onTime={(t) => patch.mutate({ id: it.id, body: { cook_time: t } })} defaultTime={cal?.dinner_time} onRemove={() => remove.mutate(it.id)} />)}
                 <button className="add-meal" onClick={() => setPicking(picking === d.iso ? null : d.iso)}><Plus size={14} /> {meals.length ? "Add another" : "Add a meal"}</button>
               </div>
             );
@@ -105,7 +118,7 @@ export default function Plan() {
           <div className="card stack">
             <strong>Planned, no day yet</strong>
             {unscheduled.map((it) => <MealRow key={it.id} it={it} days={days} onMove={(iso) => patch.mutate({ id: it.id, body: { cook_date: iso } })}
-              onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onRemove={() => remove.mutate(it.id)} />)}
+              onServings={(n) => patch.mutate({ id: it.id, body: { servings: n } })} onTime={(t) => patch.mutate({ id: it.id, body: { cook_time: t } })} defaultTime={cal?.dinner_time} onRemove={() => remove.mutate(it.id)} />)}
           </div>
         )}
 

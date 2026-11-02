@@ -113,6 +113,7 @@ input[type=number] { width: 5rem; }
 .meal-title { font-weight: 600; text-decoration: none; color: inherit; overflow-wrap: anywhere; }
 .meal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; font-size: .8rem; }
 .meal-actions input { width: 3.2rem; padding: .15rem .3rem; }
+.meal-actions input[type=time] { width: auto; padding: .15rem .3rem; font-size: .8rem; }
 .meal-actions select { padding: .15rem .3rem; max-width: 100%; font-size: .8rem; }
 .add-meal { margin-top: auto; display: inline-flex; align-items: center; justify-content: center; gap: .25rem; padding: .35rem; border: 1px dashed var(--color-border); border-radius: 8px; background: none; color: var(--color-text-secondary); cursor: pointer; font-size: .8rem; }
 .add-meal:hover { border-color: var(--color-forest); color: var(--color-forest); }

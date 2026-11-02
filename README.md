@@ -29,3 +29,11 @@ without affecting the rest, and the grocery list always works on its own. The ap
 ## Deploy (Beelink)
 `./deploy_to_beelink.sh` pulls the images GitHub Actions built for `origin/main` and restarts the stack over SSH/Tailscale (see `deploy.local.env.example`). It serves the UI on :3100 (the API is behind it at `/api`). The database lives in the
 `sous_data` volume. Keep `.env` on the Beelink only.
+
+## Google Calendar (optional)
+Meals you put on a day are written as timed `Cook: <recipe>` events to a separate **Meals** Google calendar (never
+"Care Tasks": the chore sync turns events there into tasks and deletes them). The chef also reads the week's busy
+times so it can suggest quick meals on packed evenings. Sous reuses `token_jake.pickle` from Task_Chore_Syncing,
+read-only. Locally set `GOOGLE_TOKEN_PATH` in `.env`. On the Beelink set `GOOGLE_TOKEN_FILE_ON_BEELINK` in
+`deploy.local.env` and deploy. If the token breaks, re-authenticate in Task_Chore_Syncing; the plan and grocery list
+keep working either way.

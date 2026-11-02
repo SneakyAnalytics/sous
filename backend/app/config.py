@@ -9,3 +9,9 @@ SAFEWAY_MODE = os.environ.get("SAFEWAY_MODE", "mock")
 SAFEWAY_EMAIL = os.environ.get("SAFEWAY_EMAIL", "")
 SAFEWAY_PASSWORD = os.environ.get("SAFEWAY_PASSWORD", "")
 SAFEWAY_MCP_COMMAND = os.environ.get("SAFEWAY_MCP_COMMAND", "striderlabs-mcp-safeway")
+# Google Calendar: path to an existing authorized-user token (read-only copy; refreshed in memory, never written back).
+GOOGLE_TOKEN_PATH = os.environ.get("GOOGLE_TOKEN_PATH", "")
+# Where recipe links in calendar events point (the app's address as the household reaches it).
+SOUS_URL = os.environ.get("SOUS_URL", "http://localhost:3100")
+MEALS_CALENDAR_NAME = os.environ.get("MEALS_CALENDAR_NAME", "Meals")
+DEFAULT_DINNER_TIME = os.environ.get("DEFAULT_DINNER_TIME", "17:30")
