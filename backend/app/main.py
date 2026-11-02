@@ -5,7 +5,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import chef, grocery, importer, store
+from . import chef, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
 
@@ -280,6 +280,21 @@ async def cart_match(body: MatchIn):
         except Exception as e:  # browser automation can fail in many ways; report per item
             out[name] = {"candidates": [], "error": f"Safeway lookup failed: {e}"}
     return out
+
+
+class ShopChatIn(BaseModel):
+    items: list[dict]
+    candidates: dict
+    selections: dict
+    history: list[dict] = []
+    text: str
+
+
+@app.post("/cart/chat")
+async def cart_chat(body: ShopChatIn):
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not set")
+    return await shopper.shop_chat(body.items, body.candidates, body.selections, body.history, body.text)
 
 
 @app.post("/cart/add")

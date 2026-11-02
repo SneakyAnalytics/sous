@@ -129,3 +129,6 @@ input[type=number] { width: 5rem; }
 .uses ul { margin: .35rem 0 0; padding-left: 1.2rem; font-size: 1.25rem; font-weight: 600; }
 .ing-ref { position: relative; font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: help; border-bottom: 2px dotted var(--color-ember); }
 .ing-ref:hover::after, .ing-ref:focus::after { content: attr(data-amount); position: absolute; left: 0; bottom: calc(100% + .4rem); z-index: 5; width: max-content; max-width: min(18rem, 80vw); padding: .4rem .65rem; border-radius: 8px; background: var(--color-forest); color: #fff; font-size: 1rem; font-weight: 600; line-height: 1.3; box-shadow: var(--shadow-sm); }
+
+.shop-chat { padding-top: .5rem; border-top: 1px solid var(--color-border); }
+.shop-chat .bubble { max-width: 100%; }
