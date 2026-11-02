@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, Lightbulb, Pause, Play, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
 import { api } from "../api";
 import { fmtClock, scaleIngredient } from "../lib/format";
+import { amountLabel, segmentStep, usedIngredients } from "../lib/ingredients";
 
 function useWakeLock() {
   useEffect(() => {
@@ -58,6 +59,7 @@ export default function Cook() {
   const { data: r } = useQuery({ queryKey: ["recipe", id], queryFn: () => api.recipe(id) });
   const [i, setI] = useState(-1); // -1 = mise en place, steps.length = done
   const [checked, setChecked] = useState({});
+  const [showAll, setShowAll] = useState(false); // full ingredient list, reachable from every step
   useWakeLock();
 
   const factor = useMemo(() => (r ? (+sp.get("servings") || r.servings) / r.servings : 1), [r, sp]);
@@ -65,13 +67,28 @@ export default function Cook() {
   const total = r.steps.length;
   const step = r.steps[i];
   const done = i >= total;
+  const used = step ? usedIngredients(step.text, r.ingredients) : [];
 
   return (
     <div className="cook">
       <div className="cook-top">
         <strong style={{ fontFamily: "var(--font-display)", fontSize: "1.2rem" }}>{r.title}</strong>
-        <Link to={`/recipes/${r.id}`} className="icon-btn" aria-label="Exit cook mode"><X size={20} /></Link>
+        <div className="row" style={{ gap: ".4rem", flexWrap: "nowrap" }}>
+          <button className={`btn small ${showAll ? "" : "outline"}`} onClick={() => setShowAll(!showAll)} aria-pressed={showAll}><ListChecks size={16} /> Ingredients</button>
+          <Link to={`/recipes/${r.id}`} className="icon-btn" aria-label="Exit cook mode"><X size={20} /></Link>
+        </div>
       </div>
+      {showAll && (
+        <div className="cook-sheet">
+          <ul className="cook-ings compact">
+            {r.ingredients.map((ing, k) => (
+              <li key={k} className={checked[k] ? "done" : ""} onClick={() => setChecked({ ...checked, [k]: !checked[k] })}>
+                <input type="checkbox" readOnly checked={!!checked[k]} /> {amountLabel(ing, factor)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="cook-progress"><div style={{ width: `${((i + 1) / (total + 1)) * 100}%` }} /></div>
       <div className="cook-body">
         {i === -1 && (
@@ -90,7 +107,17 @@ export default function Cook() {
         {step && (
           <>
             <div className="cook-label">Step {i + 1} of {total}</div>
-            <div className="cook-step">{step.text}</div>
+            <div className="cook-step">
+              {segmentStep(step.text, r.ingredients).map((seg, k) => seg.index === undefined ? seg.text : (
+                <button key={k} type="button" className="ing-ref" data-amount={amountLabel(r.ingredients[seg.index], factor)}>{seg.text}</button>
+              ))}
+            </div>
+            {used.length > 0 && (
+              <div className="uses">
+                <div className="cook-label">This step uses</div>
+                <ul>{used.map((k) => <li key={k}>{amountLabel(r.ingredients[k], factor)}</li>)}</ul>
+              </div>
+            )}
             {step.timer_seconds > 0 && <StepTimer key={i} seconds={step.timer_seconds} />}
             {step.tip && <div className="tip-box"><Lightbulb size={16} style={{ verticalAlign: "-3px" }} /> {step.tip}</div>}
           </>
