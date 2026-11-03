@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS profile (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- Ingredients the household always has (salt, oil, spices): the grocery list marks them "have" by default.
+CREATE TABLE IF NOT EXISTS pantry (
+    name TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS chat_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role TEXT NOT NULL,
@@ -71,7 +75,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 """
 
-JSON_COLS = ("ingredients", "steps", "chef_tips", "tags", "events")
+JSON_COLS = ("ingredients", "steps", "chef_tips", "tags", "events", "ratings")
 
 
 def init_db() -> None:
@@ -83,6 +87,11 @@ def init_db() -> None:
         rcols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
         if "cover_updated" not in rcols:  # unix time of the uploaded cover photo; NULL means "use the default art"
             conn.execute("ALTER TABLE recipes ADD COLUMN cover_updated INTEGER")
+        if "deleted_at" not in rcols:  # soft delete: a deleted recipe can be restored for 30 days
+            conn.execute("ALTER TABLE recipes ADD COLUMN deleted_at TEXT")
+        ccols = {r["name"] for r in conn.execute("PRAGMA table_info(cook_log)")}
+        if "ratings" not in ccols:  # per-person ratings as JSON {"Jake": 5, "Kadie": 4}
+            conn.execute("ALTER TABLE cook_log ADD COLUMN ratings TEXT NOT NULL DEFAULT '{}'")
         if "cook_time" not in cols:  # added after the first deploy
             conn.execute("ALTER TABLE plan_items ADD COLUMN cook_time TEXT")
 

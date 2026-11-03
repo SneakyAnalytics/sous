@@ -19,3 +19,19 @@ describe("format", () => {
     expect(days.map((d) => d.iso)).toEqual(["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
   });
 });
+
+import { fmtTime, mondayOf } from "./format";
+describe("times and weeks", () => {
+  it("formats 24-hour times for people", () => {
+    expect(fmtTime("16:40")).toBe("4:40 PM");
+    expect(fmtTime("00:05")).toBe("12:05 AM");
+    expect(fmtTime("12:00")).toBe("12:00 PM");
+    expect(fmtTime(null)).toBe("");
+  });
+  it("finds the Monday of any day, including Sundays and month boundaries", () => {
+    expect(mondayOf("2026-11-01")).toBe("2026-10-26"); // a Sunday belongs to the week that started the Monday before
+    expect(mondayOf("2026-11-02")).toBe("2026-11-02");
+    expect(mondayOf("2026-11-04")).toBe("2026-11-02");
+    expect(mondayOf("2026-01-01")).toBe("2025-12-29");
+  });
+});

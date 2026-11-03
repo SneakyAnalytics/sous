@@ -1,16 +1,18 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarCheck, ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
+import { CalendarCheck, ChefHat, ChevronLeft, ChevronRight, Flame, Pin, Plus, Share2, ShoppingCart, Star, X } from "lucide-react";
 import { api } from "../api";
 import { bannerWeek, emptyDay } from "../assets";
-import { shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
+import { fmtTime, mondayOf, shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
+import { groceryText, shareText } from "../lib/shareList";
 import CartReview from "../components/CartReview";
 
 function MealRow({ it, days, defaultTime, onMove, onServings, onTime, onRemove }) {
   return (
     <div className="meal">
       <Link to={`/recipes/${it.recipe_id}`} className="meal-title">{it.recipe.title}</Link>
+      {it.start_by && <div className="start-by">Start by <strong>{fmtTime(it.start_by)}</strong> to eat at {fmtTime(it.eat_time)}</div>}
       <div className="meal-actions">
         <label className="muted" title="Servings">Serves <input type="number" min="1" defaultValue={it.servings}
           onBlur={(e) => +e.target.value !== it.servings && onServings(Math.max(1, +e.target.value || 1))} /></label>
@@ -18,7 +20,7 @@ function MealRow({ it, days, defaultTime, onMove, onServings, onTime, onRemove }
           {!it.cook_date && <option value="">Pick a day…</option>}
           {days.map((d) => <option key={d.iso} value={d.iso}>{d.weekday} {d.date}</option>)}
         </select>
-        {it.cook_date && <input type="time" aria-label="Dinner time" value={it.cook_time || defaultTime || ""} onChange={(e) => e.target.value && onTime(e.target.value)} />}
+        {it.cook_date && <input type="time" aria-label="Time to eat" title="Time to eat" value={it.cook_time || defaultTime || ""} onChange={(e) => e.target.value && onTime(e.target.value)} />}
         <Link className="btn ember small" to={`/cook/${it.recipe_id}?servings=${it.servings}`}><Flame size={14} /> Cook</Link>
         <button className="icon-btn" aria-label="Remove" onClick={onRemove}><X size={16} /></button>
       </div>
@@ -37,6 +39,12 @@ export default function Plan() {
   const { data: plan } = useQuery({ queryKey: ["plan", week], queryFn: () => api.plan(week), enabled: !!week });
   const { data: recipes = [] } = useQuery({ queryKey: ["recipes", ""], queryFn: () => api.recipes("") });
   const refresh = () => qc.invalidateQueries({ queryKey: ["plan", week] });
+  const todayWeek = mondayOf(todayIso());
+  const { data: thisWeek } = useQuery({ queryKey: ["plan", todayWeek], queryFn: () => api.plan(todayWeek) });
+  const tonight = thisWeek?.items.filter((it) => it.cook_date === todayIso()) ?? [];
+  const dinnerTime = useMutation({ mutationFn: api.setDinnerTime, onSuccess: () => { qc.invalidateQueries({ queryKey: ["calendar"] }); qc.invalidateQueries({ queryKey: ["plan"] }); } });
+  const staple = useMutation({ mutationFn: ({ name, on }) => api.setStaple(name, on), onSuccess: () => { qc.invalidateQueries({ queryKey: ["plan"] }); qc.invalidateQueries({ queryKey: ["pantry"] }); } });
+  const [shared, setShared] = useState("");
 
   const add = useMutation({ mutationFn: ({ id, day }) => api.addToPlan(week, id, day), onSuccess: () => { setPicking(null); setFilter(""); refresh(); } });
   const remove = useMutation({ mutationFn: api.removePlanItem, onSuccess: refresh });
@@ -69,6 +77,13 @@ export default function Plan() {
   return (
     <div className="page stack">
       <div className="banner"><img src={bannerWeek} alt="" /></div>
+      {tonight.map((it) => (
+        <div key={it.id} className="tonight">
+          <div><strong>Tonight: {it.recipe.title}</strong>
+            <div>{it.start_by ? <>Start by <strong>{fmtTime(it.start_by)}</strong>, eat at {fmtTime(it.eat_time)}</> : <>Eat at {fmtTime(it.eat_time)}</>}</div></div>
+          <Link className="btn ember" to={`/cook/${it.recipe_id}?servings=${it.servings}`}><Flame size={16} /> Cook</Link>
+        </div>
+      ))}
       <div className="page-head">
         <h1>Week of {weekLabel(week)}</h1>
         <div className="week-nav">
@@ -92,6 +107,10 @@ export default function Plan() {
           </span>
         </div>
 
+        <label className="row muted">Usual dinner time
+          <input type="time" style={{ width: "auto" }} value={cal?.dinner_time || ""} onChange={(e) => e.target.value && dinnerTime.mutate(e.target.value)} />
+          <span>Each meal's start-by time counts back from it.</span>
+        </label>
         {cal?.configured && (
           <div className="row muted">
             <CalendarCheck size={16} />
@@ -162,8 +181,10 @@ export default function Plan() {
               {items.map((i) => (
                 <div key={i.key} className="list-row">
                   <div className="what">{i.display && <strong>{i.display} </strong>}{i.name}<small>{i.recipes.join(", ")}</small></div>
+                  <button className={`icon-btn pin ${i.staple ? "on" : ""}`} aria-pressed={i.staple} title={i.staple ? "Always have this (tap to undo)" : "Always have this: skip it on future lists"}
+                    aria-label={`Always have ${i.name}`} onClick={() => staple.mutate({ name: i.name, on: !i.staple })}><Pin size={15} /></button>
                   <div className="seg">
-                    <button className={i.status === "have" ? "on-have" : ""} onClick={() => setStatus.mutate({ key: i.key, status: i.status === "have" ? null : "have" })}>Have</button>
+                    <button className={i.status === "have" ? "on-have" : ""} onClick={() => !(i.staple && i.status === "have") && setStatus.mutate({ key: i.key, status: i.status === "have" ? null : "have" })}>Have</button>
                     <button className={i.status === "need" ? "on-need" : ""} onClick={() => setStatus.mutate({ key: i.key, status: i.status === "need" ? null : "need" })}>Need</button>
                   </div>
                 </div>
@@ -174,6 +195,10 @@ export default function Plan() {
             <button className="btn" disabled={unanswered > 0 || needed.length === 0} onClick={() => setReviewing(true)}>
               <ShoppingCart size={18} /> Review {needed.length} item{needed.length === 1 ? "" : "s"} for Safeway
             </button>
+            <button className="btn outline" onClick={async () => setShared(await shareText(groceryText(plan.list, `week of ${weekLabel(week)}`), "Groceries"))}>
+              <Share2 size={18} /> Share list
+            </button>
+            {shared === "copied" && <span className="muted">Copied. Paste it into a message.</span>}
             {unanswered > 0 && <span className="muted">Answer every ingredient first.</span>}
           </div>
         </section>

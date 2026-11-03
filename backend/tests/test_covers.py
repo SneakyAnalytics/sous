@@ -57,4 +57,10 @@ def test_remove_cover_and_deleting_the_recipe_cleans_up(client):
     assert not path.exists() and client.get(f"/recipes/{rid}/cover").status_code == 404
     client.put(f"/recipes/{rid}/cover", content=png((300, 200)))
     client.delete(f"/recipes/{rid}")
+    assert path.exists()  # in the trash, so the photo is kept in case it's restored
+    from app import store
+    from app.db import connect
+    with connect() as c:
+        c.execute("UPDATE recipes SET deleted_at=datetime('now','-31 days') WHERE id=?", (rid,))
+    assert store.purge_deleted(days=30) == 1
     assert not path.exists()

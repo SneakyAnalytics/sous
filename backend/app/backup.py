@@ -9,7 +9,7 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 
-from . import config
+from . import config, store
 
 log = logging.getLogger(__name__)
 KEEP = 14
@@ -87,6 +87,9 @@ async def backup_loop(check_every: int = 3600) -> None:
             made = await asyncio.to_thread(backup_if_due)
             if made:
                 log.info("database backup written: %s", made)
+            purged = await asyncio.to_thread(store.purge_deleted)
+            if purged:
+                log.info("permanently removed %d recipes that were in the trash over 30 days", purged)
         except Exception:
             log.exception("database backup failed")
         await asyncio.sleep(check_every)

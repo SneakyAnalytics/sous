@@ -1,11 +1,12 @@
 import React, { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, CalendarPlus, ChefHat, Clock, Flame, ImageOff, Lightbulb, Star, Trash2, Undo2, Users } from "lucide-react";
+import { Camera, CalendarPlus, ChefHat, Clock, Flame, ImageOff, Lightbulb, Pencil, Star, Trash2, Undo2, Users } from "lucide-react";
 import { api } from "../api";
 import { scaleIngredient, totalMinutes } from "../lib/format";
 import { recipeImage } from "../lib/recipeArt";
 import { downscaleImage } from "../lib/image";
+import RecipeEditor from "../components/RecipeEditor";
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -14,15 +15,20 @@ export default function RecipeDetail() {
   const { data: r, isLoading, isError } = useQuery({ queryKey: ["recipe", id], queryFn: () => api.recipe(id) });
   const [servings, setServings] = useState(null);
   const [added, setAdded] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const patch = useMutation({ mutationFn: (b) => api.patchRecipe(id, b), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
+  const save = useMutation({
+    mutationFn: (fields) => api.patchRecipe(id, fields),
+    onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); qc.invalidateQueries({ queryKey: ["history", id] }); qc.invalidateQueries({ queryKey: ["plan"] }); setEditing(false); },
+  });
   const { data: history } = useQuery({ queryKey: ["history", id], queryFn: () => api.recipeHistory(id) });
   const undo = useMutation({ mutationFn: () => api.undoRevision(id), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["history", id] }); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
   const fileRef = useRef(null);
   const setCover = (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); };
   const upload = useMutation({ mutationFn: async (file) => api.uploadCover(id, await downscaleImage(file)), onSuccess: setCover });
   const dropCover = useMutation({ mutationFn: () => api.removeCover(id), onSuccess: setCover });
-  const del = useMutation({ mutationFn: () => api.deleteRecipe(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recipes"] }); navigate("/recipes"); } });
+  const del = useMutation({ mutationFn: () => api.deleteRecipe(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recipes"] }); qc.invalidateQueries({ queryKey: ["trash"] }); qc.invalidateQueries({ queryKey: ["plan"] }); navigate("/recipes", { state: { deleted: { id: r.id, title: r.title } } }); } });
   const plan = useMutation({
     mutationFn: async () => { const { week_start } = await api.currentWeek(); return api.addToPlan(week_start, r.id, servings || r.servings); },
     onSuccess: () => { setAdded(true); qc.invalidateQueries({ queryKey: ["plan"] }); },
@@ -51,9 +57,12 @@ export default function RecipeDetail() {
           <button className="icon-btn" aria-label="Favorite" onClick={() => patch.mutate({ favorite: !r.favorite })}>
             <Star size={18} fill={r.favorite ? "currentColor" : "none"} style={{ color: "var(--color-gravel)" }} />
           </button>
-          <button className="icon-btn" aria-label="Delete recipe" onClick={() => confirm(`Delete "${r.title}"?`) && del.mutate()}><Trash2 size={18} /></button>
+          <button className="icon-btn" aria-label="Edit recipe" onClick={() => setEditing(!editing)}><Pencil size={18} /></button>
+          <button className="icon-btn" aria-label="Delete recipe" onClick={() => confirm(`Delete "${r.title}"? You can restore it from Recipes for 30 days.`) && del.mutate()}><Trash2 size={18} /></button>
         </div>
       </div>
+      {editing && <RecipeEditor recipe={r} saving={save.isPending} error={save.isError ? save.error.message : ""} onSave={(f) => save.mutate(f)} onCancel={() => setEditing(false)} />}
+      {!editing && <>
       {r.description && <p>{r.description}</p>}
       <div className="row muted">
         {mins && <span><Clock size={14} /> {mins} min</span>}
@@ -103,10 +112,11 @@ export default function RecipeDetail() {
         <div>
           <h2>Times we've cooked it</h2>
           <ul className="step-list" style={{ listStyle: "none", paddingLeft: 0 }}>
-            {history.cooks.map((c) => <li key={c.id}><strong>{c.cooked_on}</strong>{c.rating ? ` ${"★".repeat(c.rating)}` : ""}{c.notes && <span className="muted">: {c.notes}</span>}</li>)}
+            {history.cooks.map((c) => <li key={c.id}><strong>{c.cooked_on}</strong>{Object.keys(c.ratings || {}).length ? <span> {Object.entries(c.ratings).map(([who, n]) => `${who} ${"★".repeat(n)}`).join(" · ")}</span> : c.rating ? ` ${"★".repeat(c.rating)}` : ""}{c.notes && <span className="muted">: {c.notes}</span>}</li>)}
           </ul>
         </div>
       )}
+      </>}
       <div>
         <h2>Our notes</h2>
         <textarea rows={3} defaultValue={r.notes} placeholder="What would we change next time?" onBlur={(e) => e.target.value !== r.notes && patch.mutate({ notes: e.target.value })} />

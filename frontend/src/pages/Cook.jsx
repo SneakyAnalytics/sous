@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
@@ -6,6 +6,7 @@ import { api } from "../api";
 import { chefCelebrate } from "../assets";
 import { fmtClock, scaleIngredient } from "../lib/format";
 import { amountLabel, segmentStep, usedIngredients } from "../lib/ingredients";
+import { swipeDirection } from "../lib/swipe";
 import { clearCook, isRunning, loadCook, newTimer, pauseTimer, remaining, saveCook, startTimer, tick } from "../lib/cookState";
 
 function useWakeLock() {
@@ -62,6 +63,7 @@ export default function Cook() {
   const [state, setState] = useState(() => loadCook(id, servings) || { i: -1, checked: {}, timers: {}, servings });
   const [showAll, setShowAll] = useState(false); // full ingredient list, reachable from every step
   const [now, setNow] = useState(() => Date.now());
+  const touch = useRef(null); // where the current swipe started
   useWakeLock();
 
   const { i, checked, timers } = state;
@@ -93,6 +95,14 @@ export default function Cook() {
   const go = (n) => setState((st) => ({ ...st, i: n }));
   const setTimer = (k, fn) => setState((st) => ({ ...st, timers: { ...st.timers, [k]: fn(st.timers[k] || newTimer(r.steps[k].timer_seconds)) } }));
   const toggleCheck = (k) => setState((st) => ({ ...st, checked: { ...st.checked, [k]: !st.checked[k] } }));
+  const onSwipeEnd = (e) => {
+    const t = touch.current; touch.current = null;
+    if (!t || done) return;
+    const c = e.changedTouches[0];
+    const dir = swipeDirection(c.clientX - t.x, c.clientY - t.y);
+    if (dir === "next") go(Math.min(at + 1, total));
+    else if (dir === "back" && at >= 0) go(at - 1);
+  };
   const others = Object.entries(timers).filter(([k, t]) => +k !== at && (isRunning(t) || t.ringing));
 
   return (
@@ -126,7 +136,7 @@ export default function Cook() {
         </div>
       )}
       <div className="cook-progress"><div style={{ width: `${((at + 1) / (total + 1)) * 100}%` }} /></div>
-      <div className="cook-body">
+      <div className="cook-body" onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }} onTouchEnd={onSwipeEnd}>
         {at === -1 && (
           <>
             <div className="cook-label">Mise en place: gather everything</div>
@@ -183,21 +193,26 @@ export default function Cook() {
 }
 
 function Rate({ recipe }) {
-  const [stars, setStars] = useState(recipe.rating || 0);
+  const { data: household } = useQuery({ queryKey: ["household"], queryFn: api.household, staleTime: Infinity });
+  const [stars, setStars] = useState({}); // person -> 1..5
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
-  const save = useMutation({ mutationFn: () => api.logCook(recipe.id, { rating: stars || null, notes }), onSuccess: () => setSaved(true) });
+  const rated = Object.keys(stars).length;
+  const save = useMutation({ mutationFn: () => api.logCook(recipe.id, { ratings: stars, notes }), onSuccess: () => setSaved(true) });
   return (
     <div className="stack" style={{ width: "100%", maxWidth: 520 }}>
-      <div className="row" style={{ justifyContent: "center" }}>
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} className="icon-btn" aria-label={`${n} stars`} onClick={() => { setStars(n); setSaved(false); }}>
-            <span style={{ color: "var(--color-gravel)", fontSize: "1.6rem", lineHeight: 1 }}>{n <= stars ? "★" : "☆"}</span>
-          </button>
-        ))}
-      </div>
+      {(household?.members ?? []).map((who) => (
+        <div key={who} className="row" style={{ justifyContent: "center", gap: ".4rem" }}>
+          <strong style={{ minWidth: "4.5rem", textAlign: "right" }}>{who}</strong>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button key={n} className="icon-btn" aria-label={`${who}: ${n} stars`} onClick={() => { setStars({ ...stars, [who]: stars[who] === n ? undefined : n }); setSaved(false); }}>
+              <span style={{ color: "var(--color-gravel)", fontSize: "1.6rem", lineHeight: 1 }}>{n <= (stars[who] || 0) ? "★" : "☆"}</span>
+            </button>
+          ))}
+        </div>
+      ))}
       <textarea rows={3} value={notes} placeholder="What would we change next time? (the chef reads this)" onChange={(e) => { setNotes(e.target.value); setSaved(false); }} />
-      <button className="btn" disabled={save.isPending || saved || (!stars && !notes.trim())} onClick={() => save.mutate()}>
+      <button className="btn" disabled={save.isPending || saved || (!Object.values(stars).some(Boolean) && !notes.trim())} onClick={() => { setStars(Object.fromEntries(Object.entries(stars).filter(([, n]) => n))); save.mutate(); }}>
         {saved ? "Saved. The chef will remember." : "Save how it went"}
       </button>
       {save.isError && <div className="error">{save.error.message}</div>}

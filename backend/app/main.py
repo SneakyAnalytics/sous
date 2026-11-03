@@ -6,9 +6,9 @@ from typing import Literal
 import anthropic
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from . import backup, chef, covers, gcal, grocery, importer, shopper, store
+from . import backup, chef, config, covers, gcal, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
 
@@ -27,6 +27,10 @@ app = FastAPI(title="Sous", lifespan=lifespan)
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+NO_KEY = ("The chef isn't set up yet: this server has no Anthropic API key. Put ANTHROPIC_API_KEY=... in .env, "
+          "then redeploy with ./deploy_to_beelink.sh --env ANTHROPIC_API_KEY.")
 
 
 def _api_error(e: anthropic.APIError) -> str:
@@ -53,7 +57,7 @@ def chat_history():
 @app.post("/chat")
 def chat_send(body: ChatIn):
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not set")
+        raise HTTPException(503, NO_KEY)
     try:
         return chef.chat(body.text)
     except anthropic.APIError as e:
@@ -163,17 +167,62 @@ def recipe_get(rid: int):
 def recipe_patch(rid: int, body: RecipePatch):
     if not store.get_recipe(rid):
         raise HTTPException(404)
-    return store.update_recipe(rid, body.model_dump(exclude_unset=True))
+    fields = body.model_dump(exclude_unset=True)
+    content = {k: v for k, v in fields.items() if k in store.REVISABLE}
+    if "ingredients" in content:
+        content["ingredients"] = [
+            {**i, "category": grocery.categorize(i.get("name", ""))} for i in content["ingredients"] if str(i.get("name", "")).strip()
+        ]
+    if content:  # edits to the recipe itself are undoable, like the chef's revisions
+        store.revise_recipe(rid, content, "edited by hand")
+    rest = {k: v for k, v in fields.items() if k not in store.REVISABLE}
+    return store.update_recipe(rid, rest) if rest else store.get_recipe(rid)
 
 
 @app.delete("/recipes/{rid}")
-def recipe_delete(rid: int):
-    store.delete_recipe(rid)
+def recipe_delete(rid: int, background: BackgroundTasks):
+    """Moves the recipe to the trash (restorable for 30 days) and takes it off any plan."""
+    if not store.get_recipe(rid):
+        raise HTTPException(404)
+    for week in store.soft_delete_recipe(rid):
+        _sync_soon(background, week)
+
+
+@app.get("/recipes-trash")
+def recipes_trash():
+    return store.list_deleted()
+
+
+@app.post("/recipes/{rid}/restore")
+def recipe_restore(rid: int):
+    if not store.get_recipe(rid, include_deleted=True):
+        raise HTTPException(404)
+    return store.restore_recipe(rid)
 
 
 class CookedIn(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5)
+    ratings: dict[str, int] = {}  # per person: {"Jake": 5, "Kadie": 4}
     notes: str = ""
+
+    @field_validator("ratings")
+    @classmethod
+    def _stars(cls, v):
+        if any(not 1 <= n <= 5 for n in v.values()):
+            raise ValueError("ratings are 1 to 5 stars")
+        return v
+
+
+class PasteIn(BaseModel):
+    text: str = Field(min_length=20, max_length=20000)
+
+
+class StapleIn(BaseModel):
+    staple: bool
+
+
+class DinnerTimeIn(BaseModel):
+    time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 class ProfileIn(BaseModel):
@@ -184,7 +233,7 @@ class ProfileIn(BaseModel):
 def recipe_cooked(rid: int, body: CookedIn):
     if not store.get_recipe(rid):
         raise HTTPException(404)
-    return store.log_cook(rid, body.rating, body.notes)
+    return store.log_cook(rid, body.rating, body.notes, ratings=body.ratings)
 
 
 @app.get("/recipes/{rid}/history")
@@ -198,6 +247,42 @@ def recipe_undo(rid: int):
     if not restored:
         raise HTTPException(404, "nothing to undo")
     return restored
+
+
+@app.get("/household")
+def household():
+    return {"members": config.HOUSEHOLD_MEMBERS}
+
+
+@app.get("/pantry")
+def pantry_list():
+    return sorted(store.pantry_names())
+
+
+@app.put("/pantry/{name:path}")
+def pantry_set(name: str, body: StapleIn):
+    store.set_staple(name, body.staple)
+    return sorted(store.pantry_names())
+
+
+@app.post("/recipes/parse")
+def recipe_parse(body: PasteIn):
+    """Turn pasted recipe text (from a chat, an email, a card) into a saved, structured recipe."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, NO_KEY)
+    try:
+        return chef.parse_recipe_text(body.text)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except anthropic.APIError as e:
+        raise HTTPException(502, _api_error(e))
+
+
+@app.put("/settings/dinner-time")
+def dinner_time_set(body: DinnerTimeIn, background: BackgroundTasks):
+    store.set_setting("dinner_time", body.time)
+    _sync_soon(background, store.planning_week_start())
+    return {"dinner_time": body.time}
 
 
 @app.get("/taste")
@@ -279,8 +364,11 @@ def plan_get(week_start: str):
     items = store.plan_items(week_start)
     statuses = store.list_statuses(week_start)
     shopping = grocery.build_list([i for i in items if i["recipe"]])
+    pantry = store.pantry_names()
     for s in shopping:
-        s["status"] = statuses.get(s["key"])
+        s["staple"] = store.is_staple(s["name"], pantry)
+        # an answer given for this week wins; otherwise a pantry staple counts as "have"
+        s["status"] = statuses.get(s["key"]) or ("have" if s["staple"] else None)
     return {"week_start": week_start, "meal_target": store.get_meal_target(week_start), "items": items, "list": shopping}
 
 
@@ -328,7 +416,7 @@ def backup_status():
 
 @app.get("/calendar/status")
 def calendar_status():
-    return {"configured": gcal.configured(), "dinner_time": gcal.dinner_time(), "last_sync": _last_sync or None}
+    return {"configured": gcal.configured(), "dinner_time": store.dinner_time(), "last_sync": _last_sync or None}
 
 
 @app.post("/plan/{week_start}/calendar-sync")
@@ -387,7 +475,7 @@ class ShopChatIn(BaseModel):
 @app.post("/cart/chat")
 async def cart_chat(body: ShopChatIn):
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not set")
+        raise HTTPException(503, NO_KEY)
     try:
         return await shopper.shop_chat(body.items, body.candidates, body.selections, body.history, body.text)
     except anthropic.APIError as e:

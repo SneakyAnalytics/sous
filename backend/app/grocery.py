@@ -58,6 +58,7 @@ def _to_float(s: str) -> float:
 
 def categorize(name: str) -> str:
     words = set(re.findall(r"[a-z]+", name.lower()))
+    words |= {_singular(w) for w in words}  # "carrots" must match the keyword "carrot"
     for category, keywords in CATEGORIES:
         if words & set(keywords.split()):
             return category
@@ -140,6 +141,12 @@ def fmt_qty(q: float | None) -> str:
     return " ".join(parts)
 
 
+def _category(ing: dict, name: str) -> str:
+    stored = ing.get("category")
+    # recipes saved before the plural fix were filed under "Other"; look again rather than trust that
+    return stored if stored and stored != "Other" else categorize(name)
+
+
 def build_list(plan_items: list[dict]) -> list[dict]:
     """plan_items: [{recipe: {...}, servings: int}]. Returns merged, scaled, categorised items."""
     merged: dict[str, dict] = {}
@@ -154,7 +161,7 @@ def build_list(plan_items: list[dict]) -> list[dict]:
             key = merge_key(name, unit)
             entry = merged.setdefault(key, {
                 "key": key, "name": name.lower(), "family": fam, "unit": unit, "base_qty": 0.0,
-                "has_qty": False, "category": ing.get("category") or categorize(name), "recipes": [],
+                "has_qty": False, "category": _category(ing, name), "recipes": [],
             })
             if qty is not None:
                 entry["base_qty"] += qty * scale * factor

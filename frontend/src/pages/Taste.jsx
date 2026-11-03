@@ -6,6 +6,8 @@ import { api } from "../api";
 export default function Taste() {
   const qc = useQueryClient();
   const { data: t } = useQuery({ queryKey: ["taste"], queryFn: api.taste });
+  const { data: pantry = [] } = useQuery({ queryKey: ["pantry"], queryFn: api.pantry });
+  const unstaple = useMutation({ mutationFn: (name) => api.setStaple(name, false), onSuccess: (d) => { qc.setQueryData(["pantry"], d); qc.invalidateQueries({ queryKey: ["plan"] }); } });
   const [text, setText] = useState(null);
   const save = useMutation({ mutationFn: api.saveTaste, onSuccess: (d) => { qc.setQueryData(["taste"], d); setText(null); } });
   if (!t) return <div className="page muted">Loading…</div>;
@@ -18,6 +20,20 @@ export default function Taste() {
         <h2>Preferences</h2>
         <textarea rows={6} value={value} placeholder={"No cilantro\nKadie likes spicy food\nWe want more fish"} onChange={(e) => setText(e.target.value)} />
         <div className="row"><button className="btn" disabled={text === null || save.isPending} onClick={() => save.mutate(text)}>Save</button></div>
+      </section>
+      {Object.entries(t.by_person || {}).map(([who, p]) => (
+        <section key={who} className="stack">
+          <h2>{who}</h2>
+          {p.loved.length > 0 && <p><strong>Loves:</strong> {p.loved.join(" · ")}</p>}
+          {p.disliked.length > 0 && <p><strong>Didn't enjoy:</strong> {p.disliked.join(" · ")}</p>}
+        </section>
+      ))}
+      <section className="stack">
+        <h2>Pantry staples</h2>
+        <p className="muted" style={{ margin: 0 }}>Ingredients you always have. They start as "Have" on every grocery list. Pin an ingredient on the Plan page to add it here.</p>
+        {pantry.length ? <div className="row">{pantry.map((n) => (
+          <span key={n} className="chip">{n} <button className="icon-btn" style={{ padding: 0 }} aria-label={`Remove ${n}`} onClick={() => unstaple.mutate(n)}>×</button></span>
+        ))}</div> : <p className="muted">None yet.</p>}
       </section>
       <section className="stack">
         <h2>Loved</h2>

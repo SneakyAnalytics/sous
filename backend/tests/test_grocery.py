@@ -42,3 +42,18 @@ def test_different_unit_families_stay_separate_and_categorised():
     items = build_list([{"recipe": recipe("A", 1, "1 lb chicken thighs", "2 cloves garlic"), "servings": 1}])
     cats = {i["name"]: i["category"] for i in items}
     assert cats == {"chicken thighs": "Meat & Seafood", "garlic": "Produce"}
+
+
+def test_plural_ingredients_are_categorized():
+    from app.grocery import categorize
+    assert categorize("carrots") == "Produce"
+    assert categorize("yellow onions") == "Produce"
+    assert categorize("diced tomatoes") in ("Produce", "Canned & Dry Goods")
+    assert categorize("eggs") == "Dairy & Eggs"
+    assert categorize("mystery thing") == "Other"
+
+
+def test_a_stale_other_category_is_rechecked_when_building_the_list():
+    from app.grocery import build_list
+    recipe = {"title": "Soup", "servings": 4, "ingredients": [{"name": "carrots", "quantity": 3, "category": "Other"}]}
+    assert build_list([{"recipe": recipe, "servings": 4}])[0]["category"] == "Produce"

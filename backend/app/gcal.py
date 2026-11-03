@@ -63,22 +63,24 @@ def _meals_calendar_id(svc) -> str:
 
 
 def dinner_time() -> str:
-    return store.get_setting("dinner_time") or config.DEFAULT_DINNER_TIME
+    return store.dinner_time()
 
 
 def event_body(item: dict) -> dict:
-    """The calendar event for one planned meal: 'Cook: <title>' at its time, with a link to cook mode."""
+    """The calendar event for one planned meal: from when to start cooking until just after you eat."""
     r = item["recipe"]
-    hhmm = item.get("cook_time") or dinner_time()
-    start = datetime.fromisoformat(f"{item['cook_date']}T{hhmm}:00")
-    minutes = min(180, max(60, (r.get("prep_min") or 0) + (r.get("cook_min") or 0)))
-    end = start + timedelta(minutes=minutes)
-    link = f"{config.SOUS_URL.rstrip('/')}/cook/{r['id']}?servings={item['servings']}"
+    eat = datetime.fromisoformat(f"{item['cook_date']}T{item.get('cook_time') or dinner_time()}:00")
+    t = store.meal_times(item)
+    start = datetime.fromisoformat(f"{item['cook_date']}T{t['start_by']}:00") if t["start_by"] else eat - timedelta(hours=1)
+    end = eat + timedelta(minutes=30)
+    base = config.SOUS_URL.rstrip("/")
     return {
         "summary": f"Cook: {r['title']}",
-        "description": f"Serves {item['servings']}\nCook mode: {link}\nRecipe: {config.SOUS_URL.rstrip('/')}/recipes/{r['id']}",
+        "description": (f"Start by {start:%-I:%M %p}, eat at {eat:%-I:%M %p}. Serves {item['servings']}\n"
+                        f"Cook mode: {base}/cook/{r['id']}?servings={item['servings']}\nRecipe: {base}/recipes/{r['id']}"),
         "start": {"dateTime": start.isoformat(), "timeZone": TOWN_TZ},
         "end": {"dateTime": end.isoformat(), "timeZone": TOWN_TZ},
+        "reminders": {"useDefault": False, "overrides": [{"method": "popup", "minutes": 10}]},
         "extendedProperties": {"private": {"sous": "1", "sous_item": str(item["id"])}},
     }
 

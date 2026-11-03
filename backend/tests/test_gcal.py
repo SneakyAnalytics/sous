@@ -77,15 +77,17 @@ def test_sync_creates_updates_and_removes_only_our_events(client):
     assert gcal.sync_week(week, svc) == {"created": 1, "updated": 0, "deleted": 0, "unchanged": 0}
     svc.events_by_cal["meals-id"]["foreign"] = {"id": "foreign", "summary": "Not ours", "start": {}, "end": {}}
     ev = next(e for e in svc.events_by_cal["meals-id"].values() if e["id"] != "foreign")
-    assert ev["summary"] == "Cook: Chili Mac" and ev["start"]["dateTime"].startswith(f"{day}T17:30")
-    assert f"/cook/{rid}?servings=4" in ev["description"]
-    assert ev["end"]["dateTime"].startswith(f"{day}T18:30")  # 50 min of work still blocks an hour
+    # dinner at 5:30 PM and 50 minutes of work: the event runs from the start-by time to half an hour after eating
+    assert ev["summary"] == "Cook: Chili Mac" and ev["start"]["dateTime"].startswith(f"{day}T16:40")
+    assert f"/cook/{rid}?servings=4" in ev["description"] and "Start by 4:40 PM, eat at 5:30 PM" in ev["description"]
+    assert ev["end"]["dateTime"].startswith(f"{day}T18:00")
+    assert ev["reminders"] == {"useDefault": False, "overrides": [{"method": "popup", "minutes": 10}]}
 
     assert gcal.sync_week(week, svc)["unchanged"] == 1
     item = store.plan_items(week)[0]
     store.update_plan_item(item["id"], {"cook_time": "18:45"})
     assert gcal.sync_week(week, svc)["updated"] == 1
-    assert ev["start"]["dateTime"].startswith(f"{day}T18:45")
+    assert ev["start"]["dateTime"].startswith(f"{day}T17:55")  # eat at 6:45 PM now, so start 50 minutes earlier
 
     store.remove_plan_item(item["id"])
     assert gcal.sync_week(week, svc)["deleted"] == 1

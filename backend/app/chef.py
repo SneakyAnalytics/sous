@@ -91,6 +91,9 @@ def _normalize_ingredients(ings: list[dict]) -> list[dict]:
     return out
 
 
+TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
+
+
 def run_tool(name: str, args: dict, events: list[dict]) -> str:
     """Run one tool call. A bad call becomes an error the chef can read and retry, never a crashed chat."""
     try:
@@ -169,11 +172,45 @@ def plan_context() -> str:
     return "\n".join(lines)
 
 
+PARSE_SYSTEM = """You turn a pasted recipe (from a chat, a website, an email, a recipe card) into a structured recipe by calling save_recipe.
+
+- Keep the author's quantities, ingredients and technique exactly. Do not invent or change amounts.
+- Quantities are numbers (1.5, not "1 1/2"); when the text gives a range, use the upper end and put the range in the ingredient's note.
+- Split the method into small, single-action steps in order. Set timer_seconds on any step with a stated time (use the middle of a range).
+- Put the author's own tips, warnings and "why" explanations on the step they belong to. Put the best 3-5 general tips in chef_tips.
+- Add 2-5 short tags (dish type, main protein, method such as "dutch oven", "one pot", "weeknight").
+- prep_min and cook_min: use the text; if it only gives a total, split sensibly. Servings default to 4 if unstated.
+- If the text is not a recipe, do not call the tool."""
+
+
+def parse_recipe_text(text: str) -> dict:
+    """Structure pasted recipe text with the model and save it. Raises ValueError if it isn't a recipe."""
+    client = anthropic.Anthropic()
+    resp = client.messages.create(
+        model=config.ANTHROPIC_MODEL, max_tokens=4096, system=PARSE_SYSTEM,
+        tools=[TOOLS_BY_NAME["save_recipe"]], tool_choice={"type": "auto"},
+        messages=[{"role": "user", "content": f"Save this recipe:\n\n{text}"}],
+    )
+    call = next((b for b in resp.content if b.type == "tool_use" and b.name == "save_recipe"), None)
+    if not call:
+        raise ValueError("That doesn't look like a recipe I can save. Paste the ingredients and steps.")
+    events: list[dict] = []
+    out = json.loads(run_tool("save_recipe", call.input, events))
+    if "error" in out or not events:
+        raise ValueError("I couldn't make a recipe from that text. Check it has ingredients and steps.")
+    return store.get_recipe(events[0]["recipe_id"])
+
+
 def taste_context() -> str:
     t = store.taste_summary()
     lines = ["\nWhat we know about their taste:"]
     if t["preferences"]:
         lines.append("Stated preferences:\n" + t["preferences"])
+    for person, p in t.get("by_person", {}).items():
+        if p["loved"]:
+            lines.append(f"{person} loved: " + "; ".join(p["loved"]))
+        if p["disliked"]:
+            lines.append(f"{person} did not enjoy: " + "; ".join(p["disliked"]))
     if t["loved"]:
         lines.append("Loved (favorites or 4-5 stars): " + "; ".join(t["loved"]))
     if t["disliked"]:

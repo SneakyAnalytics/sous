@@ -161,3 +161,24 @@ input[type=number] { width: 5rem; }
 .hero-actions .btn.outline { background: var(--color-surface); }
 .backup-line { margin: 1rem 0 0; font-size: .85rem; color: var(--color-text-tertiary); }
 .backup-line.warn { color: var(--color-danger); font-weight: 600; }
+
+/* tonight, start-by, pins */
+.tonight { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; padding: .8rem 1rem; border-radius: var(--radius); background: var(--color-forest); color: #fff; }
+.tonight .btn.ember { flex: none; }
+.start-by { font-size: .8rem; color: var(--color-text-secondary); }
+.icon-btn.pin { opacity: .35; }
+.icon-btn.pin.on { opacity: 1; color: var(--color-ember); }
+
+/* recipe editor */
+.editor label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
+.ed-row.ing { display: grid; grid-template-columns: 4.5rem 4.5rem 1fr 1fr auto; gap: .4rem; align-items: center; }
+.ed-step { padding: .5rem; border: 1px solid var(--color-border); border-radius: 10px; display: flex; flex-direction: column; gap: .4rem; }
+.col-btns { display: flex; flex-direction: column; gap: .1rem; }
+@media (max-width: 700px) { .ed-row.ing { grid-template-columns: 4rem 4rem 1fr auto; } .ed-row.ing input[aria-label="Note"] { grid-column: 1 / -2; } }
+
+/* browsing, undo, trash */
+.chip-btn { border: 1px solid var(--color-border); background: var(--color-surface); color: inherit; border-radius: 999px; padding: .25rem .8rem; cursor: pointer; font: inherit; font-size: .85rem; }
+.chip-btn.on { background: var(--color-forest); border-color: var(--color-forest); color: #fff; }
+.undo-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 1rem; border-radius: var(--radius); background: var(--color-cream); border: 1px solid var(--color-forest); }
+.trash { margin-top: 1rem; }
+.trash summary { cursor: pointer; color: var(--color-text-secondary); }

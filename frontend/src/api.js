@@ -36,6 +36,13 @@ export const api = {
     return res.json();
   },
   removeCover: (id) => request(`/recipes/${id}/cover`, { method: "DELETE" }),
+  parseRecipe: (text) => request("/recipes/parse", { method: "POST", body: { text } }),
+  household: () => request("/household"),
+  pantry: () => request("/pantry"),
+  setStaple: (name, staple) => request(`/pantry/${encodeURIComponent(name)}`, { method: "PUT", body: { staple } }),
+  setDinnerTime: (time) => request("/settings/dinner-time", { method: "PUT", body: { time } }),
+  trash: () => request("/recipes-trash"),
+  restoreRecipe: (id) => request(`/recipes/${id}/restore`, { method: "POST" }),
   importRecipe: (url) => request("/recipes/import", { method: "POST", body: { url } }),
   currentWeek: () => request("/plan/current-week"),
   plan: (week) => request(`/plan/${week}`),

@@ -15,3 +15,5 @@ GOOGLE_TOKEN_PATH = os.environ.get("GOOGLE_TOKEN_PATH", "")
 SOUS_URL = os.environ.get("SOUS_URL", "http://localhost:3100")
 MEALS_CALENDAR_NAME = os.environ.get("MEALS_CALENDAR_NAME", "Meals")
 DEFAULT_DINNER_TIME = os.environ.get("DEFAULT_DINNER_TIME", "17:30")
+# Who is in the household: each person rates what they cook, so the chef learns each person's taste.
+HOUSEHOLD_MEMBERS = [m.strip() for m in os.environ.get("HOUSEHOLD_MEMBERS", "Jake,Kadie").split(",") if m.strip()]
