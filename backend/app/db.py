@@ -77,6 +77,7 @@ JSON_COLS = ("ingredients", "steps", "chef_tips", "tags", "events")
 def init_db() -> None:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")  # readers don't block the writer, and vice versa
         conn.executescript(SCHEMA)
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_items)")}
         if "cook_time" not in cols:  # added after the first deploy
@@ -85,7 +86,7 @@ def init_db() -> None:
 
 @contextmanager
 def connect():
-    conn = sqlite3.connect(config.DB_PATH)
+    conn = sqlite3.connect(config.DB_PATH, timeout=10)  # wait out another writer instead of failing
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:

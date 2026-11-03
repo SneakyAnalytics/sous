@@ -51,7 +51,7 @@ export default function Chef() {
       <div className="chat-log">
         {history.length === 0 && !pending && (
           <div className="stack" style={{ margin: "auto 0" }}>
-            <img className="art hero" src={chefWave} alt="Chef Claude waving" />
+            <img className="art hero" style={{ width: "min(150px, 38vw)" }} src={chefWave} alt="Chef Claude waving" />
             <h1><ChefHat style={{ verticalAlign: "-4px" }} /> What are we cooking?</h1>
             <p className="muted">I'm your chef. Ask for ideas, techniques, or the best version of a dish. When you pick one, I'll write it into your recipe book.</p>
             <div className="suggestions">

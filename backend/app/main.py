@@ -1,11 +1,13 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from typing import Literal
 
+import anthropic
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import chef, gcal, grocery, importer, shopper, store
+from . import backup, chef, gcal, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
 
@@ -13,7 +15,9 @@ from .safeway import SafewayError, get_client
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    task = asyncio.create_task(backup.backup_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Sous", lifespan=lifespan)
@@ -22,6 +26,17 @@ app = FastAPI(title="Sous", lifespan=lifespan)
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+def _api_error(e: anthropic.APIError) -> str:
+    """What to tell the person when the model service has a problem (their message was not lost)."""
+    if isinstance(e, anthropic.RateLimitError):
+        return "The chef is a bit overwhelmed right now. Give it a minute and try again."
+    if isinstance(e, anthropic.AuthenticationError):
+        return "The chef can't sign in: check ANTHROPIC_API_KEY on the server."
+    if isinstance(e, (anthropic.APIConnectionError, anthropic.APITimeoutError)):
+        return "Couldn't reach the chef's service. Check the Beelink's internet and try again."
+    return "The chef hit a snag. Try again in a moment."
 
 
 # ---- chat ----
@@ -38,7 +53,10 @@ def chat_history():
 def chat_send(body: ChatIn):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(503, "ANTHROPIC_API_KEY is not set")
-    return chef.chat(body.text)
+    try:
+        return chef.chat(body.text)
+    except anthropic.APIError as e:
+        raise HTTPException(502, _api_error(e))
 
 
 @app.delete("/chat")
@@ -333,7 +351,10 @@ class ShopChatIn(BaseModel):
 async def cart_chat(body: ShopChatIn):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(503, "ANTHROPIC_API_KEY is not set")
-    return await shopper.shop_chat(body.items, body.candidates, body.selections, body.history, body.text)
+    try:
+        return await shopper.shop_chat(body.items, body.candidates, body.selections, body.history, body.text)
+    except anthropic.APIError as e:
+        raise HTTPException(502, _api_error(e))
 
 
 @app.post("/cart/add")

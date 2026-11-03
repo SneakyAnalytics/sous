@@ -114,3 +114,34 @@ def test_planning_week_rolls_forward_on_sunday(monkeypatch):
     assert store.planning_week_start() == "2026-11-02" and store.current_week_start() == "2026-10-26"
     Fake.now_value = datetime(2026, 11, 4, 9, 0, tzinfo=store.TZ)  # Wednesday
     assert store.planning_week_start() == "2026-11-02"
+
+
+def test_malformed_tool_call_is_an_error_the_chef_can_read(client):
+    from app import chef
+    out = chef.run_tool("revise_recipe", {"recipe_id": 999, "reason": "x"}, [])
+    assert "error" in out
+    out = chef.run_tool("add_to_plan", {}, [])  # missing recipe_id
+    assert "error" in out and "KeyError" in out
+    events = []
+    ok = chef.run_tool("save_recipe", {"title": "Plain", "servings": 2, "steps": [{"text": "Stir"}],
+                                       "ingredients": [{"quantity": 1}, {"name": "rice", "quantity": 2, "unit": "cup"}]}, events)
+    assert '"saved": true' in ok  # the nameless ingredient is dropped, the rest saved
+    assert [i["name"] for i in client.get("/recipes").json()[0]["ingredients"]] == ["rice"]
+
+
+def test_api_failure_returns_a_friendly_error_and_keeps_history_clean(client, monkeypatch):
+    import anthropic
+    import httpx
+    from app import chef
+
+    class Boom:
+        class messages:
+            @staticmethod
+            def create(**kw):
+                raise anthropic.APIConnectionError(request=httpx.Request("POST", "http://x"))
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: Boom)
+    r = client.post("/chat", json={"text": "hello"})
+    assert r.status_code == 502 and "Beelink's internet" in r.json()["detail"]
+    assert client.get("/chat").json() == []

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarPlus, ChefHat, Clock, Flame, Lightbulb, Star, Trash2, Undo2, Users } from "lucide-react";
 import { api } from "../api";
 import { scaleIngredient, totalMinutes } from "../lib/format";
+import { recipeArt } from "../lib/recipeArt";
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -30,6 +31,7 @@ export default function RecipeDetail() {
 
   return (
     <div className="page stack">
+      <img className="detail-hero" src={recipeArt(r)} alt="" />
       <div className="page-head">
         <h1>{r.title}</h1>
         <div className="row">

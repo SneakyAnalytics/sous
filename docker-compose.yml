@@ -20,7 +20,7 @@ services:
       # GOOGLE_TOKEN_PATH=/run/google/token.pickle in .env to turn the calendar on; otherwise an empty placeholder is mounted.
       - ${GOOGLE_TOKEN_FILE:-./google_token.pickle}:/run/google/token.pickle:ro
     ports:
-      - "8100:8000"
+      - "127.0.0.1:8100:8000"   # the web container proxies /api, so the API needn't be reachable from the network
     mem_limit: 1536m   # headless Chromium for the Safeway lookups needs headroom
     logging: *logging
 
@@ -38,3 +38,6 @@ services:
 
 volumes:
   sous_data:
+    # External so `docker compose down -v` can never delete the recipes. deploy_to_beelink.sh creates it if missing.
+    external: true
+    name: sous_sous_data

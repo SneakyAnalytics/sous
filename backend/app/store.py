@@ -163,6 +163,11 @@ def add_message(role: str, text: str, events: list | None = None) -> dict:
     return row_to_dict(row)
 
 
+def delete_message(message_id: int) -> None:
+    with connect() as c:
+        c.execute("DELETE FROM chat_messages WHERE id=?", (message_id,))
+
+
 def recent_messages(limit: int) -> list[dict]:
     with connect() as c:
         rows = c.execute("SELECT * FROM (SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?) ORDER BY id", (limit,)).fetchall()

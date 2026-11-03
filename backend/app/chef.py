@@ -1,11 +1,14 @@
 """Chef Claude: a coaching chat with tools. The model writes and coaches; all list math lives in grocery.py."""
 import json
+import logging
 from datetime import date, datetime
 
 import anthropic
 
 from . import config, gcal, store
 from .grocery import parse_ingredient
+
+log = logging.getLogger(__name__)
 
 SYSTEM = """You are Chef Claude, a warm, exacting master chef coaching two home cooks (a couple) in their kitchen.
 
@@ -75,6 +78,8 @@ TOOLS = [
 def _normalize_ingredients(ings: list[dict]) -> list[dict]:
     out = []
     for i in ings:
+        if not str(i.get("name", "")).strip():
+            continue  # a nameless ingredient can't go on a grocery list
         base = parse_ingredient(i["name"]) if i.get("quantity") is None and not i.get("unit") else {}
         out.append({
             "quantity": i.get("quantity", base.get("quantity")),
@@ -87,6 +92,15 @@ def _normalize_ingredients(ings: list[dict]) -> list[dict]:
 
 
 def run_tool(name: str, args: dict, events: list[dict]) -> str:
+    """Run one tool call. A bad call becomes an error the chef can read and retry, never a crashed chat."""
+    try:
+        return _run_tool(name, args, events)
+    except Exception as e:  # malformed arguments from the model, a missing field, a bad id
+        log.warning("tool %s failed: %r", name, e)
+        return json.dumps({"error": f"{name} failed: {type(e).__name__}: {e}. Check the arguments and try again."})
+
+
+def _run_tool(name: str, args: dict, events: list[dict]) -> str:
     if name == "save_recipe":
         args = {**args, "ingredients": _normalize_ingredients(args.get("ingredients", []))}
         recipe = store.create_recipe(args)
@@ -184,7 +198,15 @@ def _history() -> list[dict]:
 
 
 def chat(user_text: str) -> dict:
-    store.add_message("user", user_text)
+    sent = store.add_message("user", user_text)
+    try:
+        return _chat(user_text, sent)
+    except Exception:
+        store.delete_message(sent["id"])  # so a retry doesn't leave two unanswered messages in the history
+        raise
+
+
+def _chat(user_text: str, sent: dict) -> dict:
     client = anthropic.Anthropic()
     messages = _history()
     events: list[dict] = []

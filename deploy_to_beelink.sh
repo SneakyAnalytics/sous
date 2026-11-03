@@ -84,6 +84,8 @@ remote "if not exist $REMOTE_DIR\\google_token.pickle type nul > $REMOTE_DIR\\go
   fi
 } | merge_env
 
+remote "docker volume inspect sous_sous_data >nul 2>&1 || docker volume create sous_sous_data" >/dev/null
+
 echo "⬇️  Pulling images and restarting..."
 remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose pull && docker compose up -d --remove-orphans"
 
