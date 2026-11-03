@@ -159,3 +159,5 @@ input[type=number] { width: 5rem; }
 .hero-wrap { position: relative; line-height: 0; }
 .hero-actions { position: absolute; right: .6rem; bottom: .6rem; display: flex; gap: .4rem; line-height: 1; }
 .hero-actions .btn.outline { background: var(--color-surface); }
+.backup-line { margin: 1rem 0 0; font-size: .85rem; color: var(--color-text-tertiary); }
+.backup-line.warn { color: var(--color-danger); font-weight: 600; }

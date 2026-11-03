@@ -89,6 +89,11 @@ remote "docker volume inspect sous_sous_data >nul 2>&1 || docker volume create s
 echo "⬇️  Pulling images and restarting..."
 remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose pull && docker compose up -d --remove-orphans"
 
+echo "🗄️  Updating the backup job (external drive copy)..."
+remote "if not exist $REMOTE_DIR\\scripts mkdir $REMOTE_DIR\\scripts" >/dev/null
+scp -q scripts/host/sous_backup.ps1 scripts/host/register_sous_backup_task.ps1 "$BEELINK:$REMOTE_DIR_FWD/scripts/"
+remote "powershell -NoProfile -ExecutionPolicy Bypass -File $REMOTE_DIR_FWD/scripts/register_sous_backup_task.ps1"
+
 echo "🩺 Waiting for health..."
 for i in $(seq 1 30); do
   if health=$(remote "curl -sf http://localhost:8100/health" 2>/dev/null); then echo "✅ $health"; break; fi

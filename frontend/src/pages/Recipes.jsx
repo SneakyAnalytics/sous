@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import RecipeCard from "../components/RecipeCard";
 import { emptySearch } from "../assets";
+import { describeBackup } from "../lib/backupStatus";
 
 export default function Recipes() {
   const qc = useQueryClient();
@@ -12,6 +13,8 @@ export default function Recipes() {
   const [q, setQ] = useState("");
   const [url, setUrl] = useState("");
   const { data: recipes = [], isLoading } = useQuery({ queryKey: ["recipes", q], queryFn: () => api.recipes(q) });
+  const { data: status } = useQuery({ queryKey: ["backup"], queryFn: api.backupStatus, staleTime: 60_000 });
+  const backup = status && describeBackup(status);
   const importer = useMutation({
     mutationFn: api.importRecipe,
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["recipes"] }); navigate(`/recipes/${r.id}`); },
@@ -31,6 +34,7 @@ export default function Recipes() {
       ) : (
         <div className="recipe-grid">{recipes.map((r) => <RecipeCard key={r.id} recipe={r} />)}</div>
       )}
+      {backup && <p className={`backup-line ${backup.level}`}>{backup.text}</p>}
     </div>
   );
 }

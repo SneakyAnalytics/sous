@@ -321,6 +321,11 @@ def plan_remove(item_id: int, background: BackgroundTasks):
         _sync_soon(background, item["week_start"])
 
 
+@app.get("/backup/status")
+def backup_status():
+    return backup.status()
+
+
 @app.get("/calendar/status")
 def calendar_status():
     return {"configured": gcal.configured(), "dinner_time": gcal.dinner_time(), "last_sync": _last_sync or None}

@@ -40,6 +40,7 @@ export const api = {
   currentWeek: () => request("/plan/current-week"),
   plan: (week) => request(`/plan/${week}`),
   addToPlan: (week, recipe_id, cook_date, servings) => request(`/plan/${week}/items`, { method: "POST", body: { recipe_id, cook_date, servings } }),
+  backupStatus: () => request("/backup/status"),
   calendarStatus: () => request("/calendar/status"),
   calendarSync: (week) => request(`/plan/${week}/calendar-sync`, { method: "POST" }),
   setMealTarget: (week, meal_target) => request(`/plan/${week}/target`, { method: "PUT", body: { meal_target } }),
