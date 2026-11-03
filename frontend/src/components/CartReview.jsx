@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Send, ShoppingCart, Sparkles, X } from "lucide-react";
+import { Check, Send, Sparkles, X } from "lucide-react";
 import { api } from "../api";
+import { chefBasket, chefError } from "../assets";
 
 /**
  * Match each needed ingredient to a Safeway product. The chef can pick (and re-search) with you in the chat,
@@ -68,12 +69,12 @@ export default function CartReview({ items, onClose }) {
   return (
     <div className="card stack" style={{ border: "2px solid var(--color-forest)" }}>
       <div className="page-head" style={{ margin: 0 }}>
-        <h2 style={{ margin: 0 }}><ShoppingCart size={20} style={{ verticalAlign: "-3px" }} /> Safeway cart</h2>
+        <h2 style={{ margin: 0 }} className="row"><img className="art" style={{ width: 48 }} src={chefBasket} alt="" /> Safeway cart</h2>
         <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={16} /></button>
       </div>
       <p className="muted">Check each match, or ask the chef to pick or change them. Items are added to your cart only. You check out in the Safeway app.</p>
       {match.isPending && <p className="muted">Searching Safeway… this can take a minute.</p>}
-      {match.isError && <p className="error">{match.error.message}</p>}
+      {match.isError && <div className="thinking"><img className="art" src={chefError} alt="" /><span className="error">{match.error.message}</span></div>}
       {cands && items.map((i) => {
         const list = cands[i.key] || [];
         const row = rows[i.key] || {};

@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, CalendarPlus, ChefHat, Pencil, Send, Trash2 } from "lucide-react";
 import { api } from "../api";
+import { chefError, chefThinking, chefWave } from "../assets";
 
 const dayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
 
@@ -50,6 +51,7 @@ export default function Chef() {
       <div className="chat-log">
         {history.length === 0 && !pending && (
           <div className="stack" style={{ margin: "auto 0" }}>
+            <img className="art hero" src={chefWave} alt="Chef Claude waving" />
             <h1><ChefHat style={{ verticalAlign: "-4px" }} /> What are we cooking?</h1>
             <p className="muted">I'm your chef. Ask for ideas, techniques, or the best version of a dish. When you pick one, I'll write it into your recipe book.</p>
             <div className="suggestions">
@@ -69,8 +71,8 @@ export default function Chef() {
           </React.Fragment>
         ))}
         {pending && <div className="bubble user">{pending}</div>}
-        {send.isPending && <div className="bubble assistant muted">Chef is thinking…</div>}
-        {send.isError && <div className="error">{send.error.message}</div>}
+        {send.isPending && <div className="thinking"><img className="art" src={chefThinking} alt="" /><span className="muted">Chef is thinking…</span></div>}
+        {send.isError && <div className="thinking"><img className="art" src={chefError} alt="" /><span className="error">{send.error.message}</span></div>}
         <div ref={endRef} />
       </div>
       <form className="chat-input" onSubmit={(e) => { e.preventDefault(); submit(text); }}>

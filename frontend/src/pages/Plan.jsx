@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarCheck, ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
 import { api } from "../api";
+import { bannerWeek } from "../assets";
 import { shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
 import CartReview from "../components/CartReview";
 
@@ -67,6 +68,7 @@ export default function Plan() {
 
   return (
     <div className="page stack">
+      <div className="banner"><img src={bannerWeek} alt="" /></div>
       <div className="page-head">
         <h1>Week of {weekLabel(week)}</h1>
         <div className="week-nav">

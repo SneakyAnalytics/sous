@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
 import { api } from "../api";
+import { chefCelebrate } from "../assets";
 import { fmtClock, scaleIngredient } from "../lib/format";
 import { amountLabel, segmentStep, usedIngredients } from "../lib/ingredients";
 
@@ -124,7 +125,7 @@ export default function Cook() {
         )}
         {done && (
           <div className="stack" style={{ alignItems: "center", textAlign: "center" }}>
-            <Check size={64} color="var(--color-forest)" />
+            <img className="art hero" src={chefCelebrate} alt="" />
             <h1>Dinner is served.</h1>
             <p className="muted">How did it turn out?</p>
             <Rate recipe={r} />

@@ -4,6 +4,7 @@ import { Link as LinkIcon, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import RecipeCard from "../components/RecipeCard";
+import { emptySearch } from "../assets";
 
 export default function Recipes() {
   const qc = useQueryClient();
@@ -26,7 +27,7 @@ export default function Recipes() {
       {importer.isError && <div className="error">{importer.error.message}</div>}
       <div className="row"><Search size={18} /><input type="text" placeholder="Search by title, tag or ingredient" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1 }} /></div>
       {isLoading ? <p className="muted">Loading…</p> : recipes.length === 0 ? (
-        <p className="muted">{q ? "Nothing matches." : "No recipes yet. Ask the Chef for one or import a URL."}</p>
+        <div className="empty"><img className="art hero" src={emptySearch} alt="" /><p className="muted">{q ? "Nothing matches." : "No recipes yet. Ask the Chef for one or import a URL."}</p></div>
       ) : (
         <div className="recipe-grid">{recipes.map((r) => <RecipeCard key={r.id} recipe={r} />)}</div>
       )}

@@ -133,3 +133,15 @@ input[type=number] { width: 5rem; }
 
 .shop-chat { padding-top: .5rem; border-top: 1px solid var(--color-border); }
 .shop-chat .bubble { max-width: 100%; }
+
+/* illustrations */
+.art { display: block; height: auto; }
+.art.hero { width: min(200px, 50vw); margin: 0 auto; }
+.brand img { border-radius: 50%; }
+.thinking { display: flex; align-items: center; gap: .75rem; }
+.thinking .art { width: 56px; flex: none; }
+.empty { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 1.5rem 0; text-align: center; }
+.banner { border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); line-height: 0; }
+.banner img { width: 100%; height: clamp(90px, 18vw, 150px); object-fit: cover; object-position: center 40%; }
+[data-theme="dark"] .banner img { filter: brightness(.7) saturate(.9); }
+.recipe-card .thumb { width: 72px; height: 72px; object-fit: contain; float: right; margin: 0 0 .25rem .75rem; }
