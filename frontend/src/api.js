@@ -26,6 +26,16 @@ export const api = {
   undoRevision: (id) => request(`/recipes/${id}/undo-revision`, { method: "POST" }),
   taste: () => request("/taste"),
   saveTaste: (preferences) => request("/taste", { method: "PUT", body: { preferences } }),
+  uploadCover: async (id, blob) => {
+    const res = await fetch(`/api/recipes/${id}/cover`, { method: "PUT", headers: { "Content-Type": blob.type || "image/jpeg" }, body: blob });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try { detail = (await res.json()).detail || detail; } catch { /* not JSON */ }
+      throw new Error(detail);
+    }
+    return res.json();
+  },
+  removeCover: (id) => request(`/recipes/${id}/cover`, { method: "DELETE" }),
   importRecipe: (url) => request("/recipes/import", { method: "POST", body: { url } }),
   currentWeek: () => request("/plan/current-week"),
   plan: (week) => request(`/plan/${week}`),

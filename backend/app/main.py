@@ -4,10 +4,11 @@ from contextlib import asynccontextmanager
 from typing import Literal
 
 import anthropic
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import backup, chef, gcal, grocery, importer, shopper, store
+from . import backup, chef, covers, gcal, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
 
@@ -117,6 +118,37 @@ def recipe_import(body: ImportIn):
         raise HTTPException(422, str(e))
     except Exception as e:
         raise HTTPException(502, f"Couldn't fetch that page: {e}")
+
+
+@app.put("/recipes/{rid}/cover")
+async def cover_put(rid: int, request: Request):
+    """Body is the raw image bytes (the browser sends the file as-is)."""
+    if not store.get_recipe(rid):
+        raise HTTPException(404)
+    declared = int(request.headers.get("content-length") or 0)
+    if declared > covers.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "That photo is too large (15 MB max).")
+    data = await request.body()
+    try:
+        return await asyncio.to_thread(covers.save_cover, rid, data)
+    except covers.BadImage as e:
+        raise HTTPException(413 if "too large" in str(e) else 422, str(e))
+
+
+@app.get("/recipes/{rid}/cover")
+def cover_get(rid: int):
+    path = covers.path_for(rid)
+    if not path.exists():
+        raise HTTPException(404)
+    # the URL carries ?v=<cover_updated>, so a changed photo is a new URL and the old one can be cached hard
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.delete("/recipes/{rid}/cover")
+def cover_delete(rid: int):
+    if not store.get_recipe(rid):
+        raise HTTPException(404)
+    return covers.remove_cover(rid)
 
 
 @app.get("/recipes/{rid}")

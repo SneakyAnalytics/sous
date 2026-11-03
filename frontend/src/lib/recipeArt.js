@@ -19,3 +19,8 @@ export function recipeArt(recipe) {
   }
   return recipeDefault;
 }
+
+/** The recipe's own cover photo if one was uploaded, otherwise the illustration for its type. */
+export function recipeImage(recipe) {
+  return recipe.cover_updated ? `/api/recipes/${recipe.id}/cover?v=${recipe.cover_updated}` : recipeArt(recipe);
+}

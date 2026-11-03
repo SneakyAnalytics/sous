@@ -156,3 +156,6 @@ input[type=number] { width: 5rem; }
 .chip-timer.ringing { background: var(--color-ember); color: #fff; animation: pulse 1s infinite; }
 .cook-sheet .btn { margin-top: .5rem; }
 .detail-hero { width: 100%; max-height: 220px; object-fit: cover; object-position: 50% 78%; border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.hero-wrap { position: relative; line-height: 0; }
+.hero-actions { position: absolute; right: .6rem; bottom: .6rem; display: flex; gap: .4rem; line-height: 1; }
+.hero-actions .btn.outline { background: var(--color-surface); }

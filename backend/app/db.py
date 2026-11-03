@@ -80,6 +80,9 @@ def init_db() -> None:
         conn.execute("PRAGMA journal_mode=WAL")  # readers don't block the writer, and vice versa
         conn.executescript(SCHEMA)
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(plan_items)")}
+        rcols = {r["name"] for r in conn.execute("PRAGMA table_info(recipes)")}
+        if "cover_updated" not in rcols:  # unix time of the uploaded cover photo; NULL means "use the default art"
+            conn.execute("ALTER TABLE recipes ADD COLUMN cover_updated INTEGER")
         if "cook_time" not in cols:  # added after the first deploy
             conn.execute("ALTER TABLE plan_items ADD COLUMN cook_time TEXT")
 

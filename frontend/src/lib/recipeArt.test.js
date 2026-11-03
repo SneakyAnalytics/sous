@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recipeArt } from "./recipeArt";
+import { recipeArt, recipeImage } from "./recipeArt";
 import { recipeBeef, recipeChicken, recipeDefault, recipePasta, recipeSeafood, recipeSoup } from "../assets";
 
 describe("recipeArt", () => {
@@ -12,5 +12,11 @@ describe("recipeArt", () => {
     expect(recipeArt({ title: "Lemon chicken thighs" })).toBe(recipeChicken);
     expect(recipeArt({ title: "Pork chops", tags: [] })).toBe(recipeBeef);
     expect(recipeArt({ title: "Mystery casserole", tags: [] })).toBe(recipeDefault);
+  });
+  it("prefers an uploaded cover and busts the cache when it changes", () => {
+    const r = { id: 7, title: "Chili Mac", tags: ["pasta"], cover_updated: 1700000000 };
+    expect(recipeImage(r)).toBe("/api/recipes/7/cover?v=1700000000");
+    expect(recipeImage({ ...r, cover_updated: 1700000999 })).not.toBe(recipeImage(r));
+    expect(recipeImage({ ...r, cover_updated: null })).toBe(recipePasta);
   });
 });

@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarPlus, ChefHat, Clock, Flame, Lightbulb, Star, Trash2, Undo2, Users } from "lucide-react";
+import { Camera, CalendarPlus, ChefHat, Clock, Flame, ImageOff, Lightbulb, Star, Trash2, Undo2, Users } from "lucide-react";
 import { api } from "../api";
 import { scaleIngredient, totalMinutes } from "../lib/format";
-import { recipeArt } from "../lib/recipeArt";
+import { recipeImage } from "../lib/recipeArt";
+import { downscaleImage } from "../lib/image";
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -17,6 +18,10 @@ export default function RecipeDetail() {
   const patch = useMutation({ mutationFn: (b) => api.patchRecipe(id, b), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
   const { data: history } = useQuery({ queryKey: ["history", id], queryFn: () => api.recipeHistory(id) });
   const undo = useMutation({ mutationFn: () => api.undoRevision(id), onSuccess: (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["history", id] }); qc.invalidateQueries({ queryKey: ["recipes"] }); } });
+  const fileRef = useRef(null);
+  const setCover = (d) => { qc.setQueryData(["recipe", id], d); qc.invalidateQueries({ queryKey: ["recipes"] }); };
+  const upload = useMutation({ mutationFn: async (file) => api.uploadCover(id, await downscaleImage(file)), onSuccess: setCover });
+  const dropCover = useMutation({ mutationFn: () => api.removeCover(id), onSuccess: setCover });
   const del = useMutation({ mutationFn: () => api.deleteRecipe(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ["recipes"] }); navigate("/recipes"); } });
   const plan = useMutation({
     mutationFn: async () => { const { week_start } = await api.currentWeek(); return api.addToPlan(week_start, r.id, servings || r.servings); },
@@ -31,7 +36,15 @@ export default function RecipeDetail() {
 
   return (
     <div className="page stack">
-      <img className="detail-hero" src={recipeArt(r)} alt="" />
+      <div className="hero-wrap">
+        <img className="detail-hero" src={recipeImage(r)} alt="" />
+        <div className="hero-actions">
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload.mutate(f); }} />
+          <button className="btn small" disabled={upload.isPending} onClick={() => fileRef.current?.click()}><Camera size={14} /> {upload.isPending ? "Uploading…" : r.cover_updated ? "Change photo" : "Add your photo"}</button>
+          {r.cover_updated && <button className="btn outline small" disabled={dropCover.isPending} onClick={() => confirm("Remove your photo and go back to the illustration?") && dropCover.mutate()}><ImageOff size={14} /> Remove</button>}
+        </div>
+      </div>
+      {(upload.isError || dropCover.isError) && <div className="error">{(upload.error || dropCover.error).message}</div>}
       <div className="page-head">
         <h1>{r.title}</h1>
         <div className="row">

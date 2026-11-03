@@ -2,6 +2,7 @@ import json
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from . import config
 from .db import connect, row_to_dict
 
 TZ = ZoneInfo("America/Los_Angeles")  # "this week" is Pacific, not UTC
@@ -83,9 +84,16 @@ def update_recipe(rid: int, fields: dict) -> dict | None:
     return get_recipe(rid)
 
 
+def set_cover(rid: int, updated: int | None) -> dict | None:
+    with connect() as c:
+        c.execute("UPDATE recipes SET cover_updated=? WHERE id=?", (updated, rid))
+    return get_recipe(rid)
+
+
 def delete_recipe(rid: int) -> None:
     with connect() as c:
         c.execute("DELETE FROM recipes WHERE id=?", (rid,))
+    (config.DATA_DIR / "images" / f"{rid}.webp").unlink(missing_ok=True)
 
 
 # ---- plan ----
