@@ -144,4 +144,5 @@ input[type=number] { width: 5rem; }
 .banner { border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); line-height: 0; }
 .banner img { width: 100%; height: clamp(90px, 18vw, 150px); object-fit: cover; object-position: center 40%; }
 [data-theme="dark"] .banner img { filter: brightness(.7) saturate(.9); }
-.recipe-card .thumb { width: 72px; height: 72px; object-fit: contain; float: right; margin: 0 0 .25rem .75rem; }
+.recipe-card { overflow: hidden; }
+.recipe-card .thumb { display: block; width: calc(100% + 2rem); max-width: none; margin: -1rem -1rem .25rem; aspect-ratio: 16 / 10; object-fit: cover; object-position: 50% 78%; }

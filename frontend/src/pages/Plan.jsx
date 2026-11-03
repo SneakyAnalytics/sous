@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarCheck, ChefHat, ChevronLeft, ChevronRight, Flame, Plus, ShoppingCart, Star, X } from "lucide-react";
 import { api } from "../api";
-import { bannerWeek } from "../assets";
+import { bannerWeek, emptyDay } from "../assets";
 import { shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
 import CartReview from "../components/CartReview";
 
@@ -101,6 +101,9 @@ export default function Plan() {
                 : cal.last_sync && !cal.last_sync.ok ? <span className="error"> Last sync failed: {cal.last_sync.error}</span> : ""}</span>
             <button className="btn outline small" disabled={calSync.isPending} onClick={() => calSync.mutate()}>{calSync.isPending ? "Syncing…" : "Sync now"}</button>
           </div>
+        )}
+        {plan.items.length === 0 && (
+          <div className="empty"><img className="art hero" style={{ width: 130 }} src={emptyDay} alt="" /><p className="muted" style={{ margin: 0 }}>Nothing planned yet. Pick a day below, or ask the chef for ideas.</p></div>
         )}
         <div className="week-grid">
           {days.map((d) => {
