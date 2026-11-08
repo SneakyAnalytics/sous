@@ -153,3 +153,67 @@ def test_paste_rejects_non_recipes_and_short_text(client, monkeypatch):
     assert client.get("/recipes").json() == []
     monkeypatch.delenv("ANTHROPIC_API_KEY")
     assert client.post("/recipes/parse", json={"text": "x" * 40}).status_code == 503
+
+
+# ---- the chef can schedule next week (regression: it claimed it could only do the current week) ----
+def pin_today(monkeypatch, y=2026, m=11, d=7):  # a Saturday
+    from datetime import datetime as real
+    from app import chef as chef_mod
+
+    class Fake(real):
+        @classmethod
+        def now(cls, tz=None):
+            return real(y, m, d, 9, 0, tzinfo=tz)
+
+    monkeypatch.setattr(store, "datetime", Fake)
+    monkeypatch.setattr(chef_mod, "datetime", Fake)
+
+
+def test_chef_schedules_a_day_in_next_week_and_the_context_shows_both_weeks(client, monkeypatch):
+    pin_today(monkeypatch)
+    rid = client.post("/recipes", json=SOUP).json()["id"]
+    ctx = chef.plan_context()
+    assert "Today is Saturday 2026-11-07" in ctx and "NEXT week" in ctx
+    assert "This week (Monday 2026-11-02)" in ctx and "Next week (Monday 2026-11-09)" in ctx
+    assert "Thu 11-12 (2026-11-12): open" in ctx
+
+    events = []
+    out = json.loads(chef.run_tool("add_to_plan", {"recipe_id": rid, "cook_date": "2026-11-12"}, events))
+    assert out == {"added": True, "week_start": "2026-11-09"}
+    assert events[0]["week_start"] == "2026-11-09" and events[0]["cook_date"] == "2026-11-12"
+    item = client.get("/plan/2026-11-09").json()["items"][0]
+    assert item["cook_date"] == "2026-11-12" and client.get("/plan/2026-11-02").json()["items"] == []
+    assert "Thu 11-12 (2026-11-12): Soup" in chef.plan_context()
+
+    # this week still works, and an unscheduled hold goes to a week the chef names (or the planning week)
+    assert json.loads(chef.run_tool("add_to_plan", {"recipe_id": rid, "cook_date": "2026-11-08"}, []))["week_start"] == "2026-11-02"
+    assert json.loads(chef.run_tool("add_to_plan", {"recipe_id": rid}, []))["week_start"] == "2026-11-09"
+    assert json.loads(chef.run_tool("add_to_plan", {"recipe_id": rid, "week_start": "2026-11-16"}, []))["week_start"] == "2026-11-16"
+
+
+def test_chef_rejects_past_far_future_and_malformed_days(client, monkeypatch):
+    pin_today(monkeypatch)
+    rid = client.post("/recipes", json=SOUP).json()["id"]
+    bad = lambda **a: json.loads(chef.run_tool("add_to_plan", {"recipe_id": rid, **a}, []))
+    assert "already passed" in bad(cook_date="2026-11-06")["error"]
+    assert "weeks away" in bad(cook_date="2027-03-01")["error"]
+    assert "YYYY-MM-DD" in bad(cook_date="next thursday")["error"]
+    assert "Monday" in bad(week_start="2026-11-11")["error"]
+    assert bad(cook_date="2026-11-07")["added"] is True  # today is fine
+    assert client.get("/plan/2026-11-02").json()["meal_target"] is None  # none of the rejects left anything behind
+
+
+def test_chat_syncs_the_calendar_for_the_weeks_the_chef_scheduled(client, monkeypatch):
+    from app import gcal, main
+    pin_today(monkeypatch)
+    rid = client.post("/recipes", json=SOUP).json()["id"]
+    synced = []
+    monkeypatch.setattr(gcal, "configured", lambda: True)
+    monkeypatch.setattr(gcal, "sync_week", lambda week, svc=None: synced.append(week) or {"created": 1, "updated": 0, "deleted": 0, "unchanged": 0})
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    call = NS(type="tool_use", id="t", name="add_to_plan", input={"recipe_id": rid, "cook_date": "2026-11-11"})
+    script = [NS(stop_reason="tool_use", usage=NS(output_tokens=1), content=[call]),
+              NS(stop_reason="end_turn", usage=NS(output_tokens=1), content=[NS(type="text", text="Added for Wednesday.")])]
+    monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: NS(messages=NS(create=lambda **kw: script.pop(0))))
+    assert client.post("/chat", json={"text": "put the soup on Wednesday next week"}).json()["text"] == "Added for Wednesday."
+    assert synced == ["2026-11-09"]

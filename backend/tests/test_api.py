@@ -114,6 +114,11 @@ def test_planning_week_rolls_forward_on_sunday(monkeypatch):
     assert store.planning_week_start() == "2026-11-02" and store.current_week_start() == "2026-10-26"
     Fake.now_value = datetime(2026, 11, 4, 9, 0, tzinfo=store.TZ)  # Wednesday
     assert store.planning_week_start() == "2026-11-02"
+    Fake.now_value = datetime(2026, 11, 5, 23, 0, tzinfo=store.TZ)  # Thursday night: still this week
+    assert store.planning_week_start() == "2026-11-02"
+    for stamp in (datetime(2026, 11, 6, 8, 0), datetime(2026, 11, 7, 9, 0)):  # Friday, Saturday: prepping for next week
+        Fake.now_value = stamp.replace(tzinfo=store.TZ)
+        assert store.planning_week_start() == "2026-11-09"
 
 
 def test_malformed_tool_call_is_an_error_the_chef_can_read(client):

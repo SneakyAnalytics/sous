@@ -58,11 +58,14 @@ def chat_history():
 
 
 @app.post("/chat")
-def chat_send(body: ChatIn):
+def chat_send(body: ChatIn, background: BackgroundTasks):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(503, NO_KEY)
     try:
-        return chef.chat(body.text)
+        reply = chef.chat(body.text)
+        for week in {e["week_start"] for e in reply["events"] if e.get("week_start")}:
+            _sync_soon(background, week)  # meals the chef schedules reach the calendar like ones you add by hand
+        return reply
     except anthropic.APIError as e:
         raise HTTPException(502, _api_error(e))
 

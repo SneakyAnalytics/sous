@@ -6,7 +6,7 @@ import { BookOpen, CalendarPlus, ChefHat, Pencil, Send, Trash2 } from "lucide-re
 import { api } from "../api";
 import { chefError, chefThinking, chefWave } from "../assets";
 
-const dayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "long" });
+const dayName = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 
 const STARTERS = [
   "What's a great weeknight dinner under 40 minutes?",
@@ -65,7 +65,7 @@ export default function Chef() {
             {m.events.map((e, i) => (
               <Link key={i} className="event-card" to={`/recipes/${e.recipe_id}`}>
                 {e.type === "recipe_saved" ? <BookOpen size={18} /> : e.type === "recipe_revised" ? <Pencil size={18} /> : <CalendarPlus size={18} />}
-                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : e.type === "recipe_revised" ? "revised" : e.cook_date ? `planned for ${dayName(e.cook_date)}` : "added to this week"}</span></span>
+                <span><strong>{e.title}</strong> <span className="muted">{e.type === "recipe_saved" ? "saved to recipes" : e.type === "recipe_revised" ? "revised" : e.cook_date ? `planned for ${dayName(e.cook_date)}` : "added to the plan"}</span></span>
               </Link>
             ))}
           </React.Fragment>

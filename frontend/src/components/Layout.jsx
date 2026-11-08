@@ -7,7 +7,7 @@ import { brandBadge } from "../assets";
 const NAV = [
   { to: "/", icon: ChefHat, label: "Chef", end: true },
   { to: "/recipes", icon: BookOpen, label: "Recipes" },
-  { to: "/plan", icon: CalendarDays, label: "This Week" },
+  { to: "/plan", icon: CalendarDays, label: "Plan" },
   { to: "/taste", icon: Heart, label: "Taste" },
 ];
 

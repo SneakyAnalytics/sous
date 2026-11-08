@@ -88,7 +88,7 @@ export default function Plan() {
         <h1>Week of {weekLabel(week)}</h1>
         <div className="week-nav">
           <button className="icon-btn" aria-label="Previous week" onClick={() => setOffset(offset - 1)}><ChevronLeft size={18} /></button>
-          <button className="btn outline small" onClick={() => setOffset(0)} disabled={offset === 0}>This week</button>
+          <button className="btn outline small" onClick={() => setOffset(0)} disabled={offset === 0}>{cw?.week_start > mondayOf(todayIso()) ? "Next week" : "This week"}</button>
           <button className="icon-btn" aria-label="Next week" onClick={() => setOffset(offset + 1)}><ChevronRight size={18} /></button>
         </div>
       </div>

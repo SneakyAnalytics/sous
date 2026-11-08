@@ -1,7 +1,7 @@
 """Chef Claude: a coaching chat with tools. The model writes and coaches; all list math lives in grocery.py."""
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import anthropic
 
@@ -26,6 +26,8 @@ How you work:
 - Planning: the household decides how many meals to prep and which day each lands on. Suggest options, wait for them
   to pick, then save_recipe and ask which day (or use the day they already named). Call add_to_plan with cook_date
   (YYYY-MM-DD) only once they have committed to cooking it. Never schedule a recipe they have not chosen.
+  You can schedule on any day shown in the plan (this week or next) or any later date. Never say the planner is limited to
+  the current week. If they are planning next week, use next week's dates.
 - Use plain US units (cup, tbsp, tsp, oz, lb) and whole grocery-store ingredients.
 - Their taste is listed below the plan. Lean toward what they love, avoid what they disliked, and honor their stated
   preferences without making a speech about it. When they tell you a lasting preference ("Kadie hates cilantro",
@@ -68,10 +70,12 @@ TOOLS = [
     {"name": "save_recipe", "description": "Save a complete recipe to the household's library.", "input_schema": RECIPE_SCHEMA},
     {"name": "search_my_recipes", "description": "Search saved recipes by title/tag/ingredient. Empty query lists favorites and recent.",
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
-    {"name": "add_to_plan", "description": "Add a saved recipe to this week's cooking plan, on a specific day when known.",
+    {"name": "add_to_plan", "description": "Schedule a saved recipe on a day: this week, next week, or any day up to 8 weeks ahead. "
+     "The right week is worked out from the date, so always give cook_date when they name a day.",
      "input_schema": {"type": "object", "properties": {
          "recipe_id": {"type": "integer"}, "servings": {"type": "integer"},
-         "cook_date": {"type": "string", "description": "YYYY-MM-DD, must be a day in the current week"}},
+         "cook_date": {"type": "string", "description": "YYYY-MM-DD, today or later (use the dates in the plan below)"},
+         "week_start": {"type": "string", "description": "Only if no day is chosen yet: the Monday (YYYY-MM-DD) of the week to hold it in"}},
          "required": ["recipe_id"]}},
 ]
 
@@ -133,43 +137,62 @@ def _run_tool(name: str, args: dict, events: list[dict]) -> str:
         recipe = store.get_recipe(args["recipe_id"])
         if not recipe:
             return json.dumps({"error": "no such recipe"})
-        week = store.planning_week_start()
+        today = datetime.now(store.TZ).date()
         day = args.get("cook_date")
         try:
-            if day and not store.in_week(week, day):
-                return json.dumps({"error": f"cook_date must be one of {store.week_days(week)}"})
+            if day:
+                d = date.fromisoformat(day)
+                if d < today:
+                    return json.dumps({"error": f"{day} has already passed. Today is {today}."})
+                if d > today + timedelta(days=store.PLAN_AHEAD_DAYS):
+                    return json.dumps({"error": f"{day} is more than {store.PLAN_AHEAD_DAYS // 7} weeks away; pick an earlier day."})
+                week = store.monday_of(day)
+            else:
+                week = args.get("week_start") or store.planning_week_start()
+                if date.fromisoformat(week).weekday() != 0:
+                    return json.dumps({"error": "week_start must be a Monday (YYYY-MM-DD)"})
         except ValueError:
-            return json.dumps({"error": "cook_date must be YYYY-MM-DD"})
+            return json.dumps({"error": "dates must be YYYY-MM-DD"})
         store.add_plan_item(week, recipe["id"], args.get("servings") or recipe["servings"], day)
-        events.append({"type": "added_to_plan", "recipe_id": recipe["id"], "title": recipe["title"], "cook_date": day})
-        return json.dumps({"added": True})
+        events.append({"type": "added_to_plan", "recipe_id": recipe["id"], "title": recipe["title"], "cook_date": day, "week_start": week})
+        return json.dumps({"added": True, "week_start": week})
     return json.dumps({"error": f"unknown tool {name}"})
 
 
-def plan_context() -> str:
-    """Where this week's plan stands, so the chef can fill the open days instead of guessing."""
-    week = store.planning_week_start()
-    today = datetime.now(store.TZ).date()
+def _week_block(week: str, heading: str) -> list[str]:
     target = store.get_meal_target(week)
     items = store.plan_items(week)
-    by_day = {d: [i["recipe"]["title"] for i in items if i["cook_date"] == d and i["recipe"]] for d in store.week_days(week)}
-    unscheduled = [i["recipe"]["title"] for i in items if not i["cook_date"] and i["recipe"]]
-    lines = [f"\nThis week's plan (today is {today:%A %Y-%m-%d}; week starts Monday {week}):",
+    by_day = {d: [i["recipe"]["title"] for i in items if i["cook_date"] == d] for d in store.week_days(week)}
+    unscheduled = [i["recipe"]["title"] for i in items if not i["cook_date"]]
+    lines = [f"\n{heading} (Monday {week}):",
              f"- Meals they want to prep: {target if target else 'not set yet (ask how many)'}; planned so far: {len(items)}"]
     for d, titles in by_day.items():
-        label = date.fromisoformat(d).strftime("%a %m-%d")
-        lines.append(f"- {label} ({d}): {', '.join(titles) if titles else 'open'}")
+        lines.append(f"- {date.fromisoformat(d):%a %m-%d} ({d}): {', '.join(titles) if titles else 'open'}")
     try:  # busy times are a bonus; planning must work without the calendar
         busy = gcal.busy_by_day(week) if gcal.configured() else {}
     except Exception:
         busy = {}
     if any(busy.values()):
-        lines.append("Already on their calendars (suggest quick meals on busy evenings, longer ones on free days):")
+        lines.append("  Already on their calendars (quick meals on busy evenings, longer ones on free days):")
         for d, evs in busy.items():
             if evs:
-                lines.append(f"- {date.fromisoformat(d):%a %m-%d}: " + "; ".join(evs))
+                lines.append(f"  - {date.fromisoformat(d):%a %m-%d}: " + "; ".join(evs))
     if unscheduled:
         lines.append(f"- Planned but no day yet: {', '.join(unscheduled)}")
+    return lines
+
+
+def plan_context() -> str:
+    """The plan for this week and next, so the chef can fill open days on either instead of guessing or refusing."""
+    today = datetime.now(store.TZ).date()
+    this_week = (today - timedelta(days=today.weekday())).isoformat()
+    next_week = (date.fromisoformat(this_week) + timedelta(days=7)).isoformat()
+    focus = store.planning_week_start()
+    lines = [f"\nToday is {today:%A %Y-%m-%d}. You can schedule a meal on ANY day below (this week or next), or any later day with add_to_plan.",
+             f"They are mainly planning {'NEXT week' if focus == next_week else 'THIS week'} (starting {focus}); "
+             "when they say \"next week\" use next week's dates."]
+    lines += _week_block(this_week, "This week")
+    lines += _week_block(next_week, "Next week")
     return "\n".join(lines)
 
 

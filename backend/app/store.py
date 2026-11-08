@@ -13,11 +13,20 @@ def current_week_start() -> str:
     return (today - timedelta(days=today.weekday())).isoformat()
 
 
+def monday_of(day: str) -> str:
+    d = date.fromisoformat(day)
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+PLAN_AHEAD_DAYS = 56  # how far ahead a meal can be scheduled
+
+
 def planning_week_start() -> str:
-    """The week being planned: Sunday is when the household preps for the week ahead, so from Sunday it is next week."""
+    """The week being planned. The household preps for the week ahead on the weekend, so from Friday on it is next week
+    (today's own meals still show in the "Tonight" banner, and the week arrows reach this week)."""
     today = datetime.now(TZ).date()
     monday = today - timedelta(days=today.weekday())
-    return (monday + timedelta(days=7) if today.weekday() == 6 else monday).isoformat()
+    return (monday + timedelta(days=7) if today.weekday() >= 4 else monday).isoformat()
 
 
 def valid_week(week_start: str) -> str:
