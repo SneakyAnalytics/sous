@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -11,6 +12,8 @@ from pydantic import BaseModel, Field, field_validator
 from . import backup, chef, config, covers, gcal, grocery, importer, shopper, store
 from .db import init_db
 from .safeway import SafewayError, get_client
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")  # so app.* log lines reach `docker logs`
 
 
 @asynccontextmanager

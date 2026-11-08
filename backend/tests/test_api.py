@@ -145,3 +145,57 @@ def test_api_failure_returns_a_friendly_error_and_keeps_history_clean(client, mo
     r = client.post("/chat", json={"text": "hello"})
     assert r.status_code == 502 and "Beelink's internet" in r.json()["detail"]
     assert client.get("/chat").json() == []
+
+
+def test_a_cut_off_reply_is_retried_not_shown_as_the_answer(client, monkeypatch):
+    """Regression: a reply that hit max_tokens mid-save used to be returned as the chef's final text, saving nothing."""
+    from types import SimpleNamespace as NS
+    from app import chef
+
+    recipe = {"title": "Barley Stew", "servings": 4, "ingredients": [{"name": "barley", "quantity": 1, "unit": "cup"}], "steps": [{"text": "Simmer"}]}
+    usage = NS(output_tokens=1)
+    script = [
+        NS(stop_reason="max_tokens", usage=usage, content=[NS(type="text", text="I'll save both now."), NS(type="tool_use", id="a", name="save_recipe", input={"title": "Half"})]),
+        NS(stop_reason="tool_use", usage=usage, content=[NS(type="tool_use", id="b", name="save_recipe", input=recipe)]),
+        NS(stop_reason="end_turn", usage=usage, content=[NS(type="text", text="Saved the stew.")]),
+    ]
+    seen = []
+
+    class Fake:
+        class messages:
+            @staticmethod
+            def create(**kw):
+                seen.append([m["content"] for m in kw["messages"]][-1])
+                return script.pop(0)
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: Fake)
+    r = client.post("/chat", json={"text": "do number 2 & 3"}).json()
+    assert r["text"] == "Saved the stew." and r["events"][0]["type"] == "recipe_saved"
+    assert [x["title"] for x in client.get("/recipes").json()] == ["Barley Stew"]  # the half-written "Half" was never saved
+    assert "cut off" in seen[1]  # the chef was told, and asked for smaller pieces
+
+
+def test_chef_always_gives_up_gracefully_if_it_keeps_running_out_of_room(client, monkeypatch):
+    from types import SimpleNamespace as NS
+    from app import chef
+    cut = NS(stop_reason="max_tokens", usage=NS(output_tokens=1), content=[NS(type="text", text="...")])
+
+    class Fake:
+        class messages:
+            @staticmethod
+            def create(**kw):
+                return cut
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: Fake)
+    assert "one recipe at a time" in client.post("/chat", json={"text": "everything"}).json()["text"]
+
+
+def test_the_chef_is_told_what_is_in_the_library(client):
+    from app import chef
+    assert "library is empty" in chef.library_context()
+    rid = client.post("/recipes", json={"title": "Chili Mac", "ingredients": [], "steps": []}).json()["id"]
+    client.post(f"/recipes/{rid}/cooked", json={"ratings": {"Jake": 5, "Kadie": 5}})
+    ctx = chef.library_context()
+    assert f"Chili Mac (id {rid}, 5/5, cooked 1x)" in ctx and "complete library" in ctx

@@ -83,7 +83,7 @@ async def shop_chat(items: list[dict], candidates: dict, selections: dict, histo
 
     reply = ""
     for _ in range(6):
-        resp = await client.messages.create(model=config.ANTHROPIC_MODEL, max_tokens=2048, system=system, tools=TOOLS, messages=messages)
+        resp = await client.messages.create(model=config.ANTHROPIC_MODEL, max_tokens=8000, system=system, tools=TOOLS, messages=messages)
         if resp.stop_reason != "tool_use":
             reply = "".join(b.text for b in resp.content if b.type == "text").strip()
             break

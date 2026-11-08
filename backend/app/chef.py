@@ -9,6 +9,7 @@ from . import config, gcal, store
 from .grocery import parse_ingredient
 
 log = logging.getLogger(__name__)
+MAX_TOKENS = 16000  # two complete recipes in one reply need ~6k, and thinking shares the same budget
 
 SYSTEM = """You are Chef Claude, a warm, exacting master chef coaching two home cooks (a couple) in their kitchen.
 
@@ -187,7 +188,7 @@ def parse_recipe_text(text: str) -> dict:
     """Structure pasted recipe text with the model and save it. Raises ValueError if it isn't a recipe."""
     client = anthropic.Anthropic()
     resp = client.messages.create(
-        model=config.ANTHROPIC_MODEL, max_tokens=4096, system=PARSE_SYSTEM,
+        model=config.ANTHROPIC_MODEL, max_tokens=MAX_TOKENS, system=PARSE_SYSTEM,
         tools=[TOOLS_BY_NAME["save_recipe"]], tool_choice={"type": "auto"},
         messages=[{"role": "user", "content": f"Save this recipe:\n\n{text}"}],
     )
@@ -199,6 +200,26 @@ def parse_recipe_text(text: str) -> dict:
     if "error" in out or not events:
         raise ValueError("I couldn't make a recipe from that text. Check it has ingredients and steps.")
     return store.get_recipe(events[0]["recipe_id"])
+
+
+def library_context() -> str:
+    """The saved recipes by name, so the chef doesn't guess what is (or isn't) in the library."""
+    recipes = store.list_recipes()
+    if not recipes:
+        return "\nTheir recipe library is empty."
+    lines = ["\nTheir saved recipes (this is the complete library; use search_my_recipes for details):"]
+    for r in recipes[:60]:
+        bits = [f"id {r['id']}"]
+        if r.get("rating"):
+            bits.append(f"{r['rating']}/5")
+        if r.get("cook_count"):
+            bits.append(f"cooked {r['cook_count']}x")
+        if r.get("favorite"):
+            bits.append("favorite")
+        lines.append(f"- {r['title']} ({', '.join(bits)})")
+    if len(recipes) > 60:
+        lines.append(f"- ...and {len(recipes) - 60} more")
+    return "\n".join(lines)
 
 
 def taste_context() -> str:
@@ -247,10 +268,21 @@ def _chat(user_text: str, sent: dict) -> dict:
     client = anthropic.Anthropic()
     messages = _history()
     events: list[dict] = []
+    system = SYSTEM + plan_context() + library_context() + taste_context()
+    cut_off = 0
     for _ in range(8):  # bounded tool loop
-        resp = client.messages.create(
-            model=config.ANTHROPIC_MODEL, max_tokens=4096, system=SYSTEM + plan_context() + taste_context(), tools=TOOLS, messages=messages,
-        )
+        resp = client.messages.create(model=config.ANTHROPIC_MODEL, max_tokens=MAX_TOKENS, system=system, tools=TOOLS, messages=messages)
+        log.info("chef reply: stop_reason=%s output_tokens=%s", resp.stop_reason, getattr(resp.usage, "output_tokens", "?"))
+        if resp.stop_reason == "max_tokens":
+            # The reply ran out of room, possibly halfway through saving a recipe. A half-written tool call can't be used,
+            # so discard it and ask for the work in smaller pieces instead of presenting the stub as the answer.
+            cut_off += 1
+            if cut_off > 2:
+                text = "That was a lot to write in one go and I kept running out of room. Could we do one recipe at a time?"
+                break
+            messages.append({"role": "user", "content": "Your last reply was cut off before it finished, so nothing was saved. "
+                             "Do it again, one recipe per reply (a single tool call), and keep going until each is saved."})
+            continue
         if resp.stop_reason != "tool_use":
             text = "".join(b.text for b in resp.content if b.type == "text").strip()
             break
