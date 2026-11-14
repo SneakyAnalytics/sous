@@ -19,5 +19,6 @@ describe("describeBackup", () => {
     const d = describeBackup({ offsite: { ok: true, age_hours: 80, images: 4 } });
     expect(d.level).toBe("warn");
     expect(d.text).toContain("3 days");
+    expect(d.text).toContain("may not be scheduled"); // the usual cause, not just an unplugged drive
   });
 });
