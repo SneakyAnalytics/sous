@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Lightbulb, ListChecks, Pause, Play, X } from "lucide-react";
 import { api } from "../api";
 import { chefCelebrate } from "../assets";
+import { StarInput } from "../components/Stars";
 import { fmtClock, scaleIngredient } from "../lib/format";
 import { amountLabel, segmentStep, usedIngredients } from "../lib/ingredients";
 import { swipeDirection } from "../lib/swipe";
@@ -202,13 +203,9 @@ function Rate({ recipe }) {
   return (
     <div className="stack" style={{ width: "100%", maxWidth: 520 }}>
       {(household?.members ?? []).map((who) => (
-        <div key={who} className="row" style={{ justifyContent: "center", gap: ".4rem" }}>
-          <strong style={{ minWidth: "4.5rem", textAlign: "right" }}>{who}</strong>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} className="icon-btn" aria-label={`${who}: ${n} stars`} onClick={() => { setStars({ ...stars, [who]: stars[who] === n ? undefined : n }); setSaved(false); }}>
-              <span style={{ color: "var(--color-gravel)", fontSize: "1.6rem", lineHeight: 1 }}>{n <= (stars[who] || 0) ? "★" : "☆"}</span>
-            </button>
-          ))}
+        <div key={who} className="row" style={{ justifyContent: "center", gap: ".4rem", flexWrap: "nowrap" }}>
+          <strong style={{ minWidth: "3.5rem", textAlign: "right" }}>{who}</strong>
+          <StarInput label={who} value={stars[who]} onChange={(v) => { setStars({ ...stars, [who]: v }); setSaved(false); }} />
         </div>
       ))}
       <textarea rows={3} value={notes} placeholder="What would we change next time? (the chef reads this)" onChange={(e) => { setNotes(e.target.value); setSaved(false); }} />

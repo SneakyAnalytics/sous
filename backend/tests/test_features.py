@@ -64,7 +64,7 @@ def test_each_person_rates_and_the_chef_learns_both(client):
     b = client.post("/recipes", json={**SOUP, "title": "Fish"}).json()["id"]
     assert client.get("/household").json() == {"members": ["Jake", "Kadie"]}
     r = client.post(f"/recipes/{a}/cooked", json={"ratings": {"Jake": 5, "Kadie": 4}, "notes": "great"}).json()
-    assert r["rating"] == 5  # average 4.5 rounds up
+    assert r["rating"] == 4.5  # the average of 5 and 4 is kept to the half star, not rounded to a whole one
     client.post(f"/recipes/{b}/cooked", json={"ratings": {"Jake": 4, "Kadie": 1}})
     assert client.post(f"/recipes/{a}/cooked", json={"ratings": {"Jake": 9}}).status_code == 422
     t = client.get("/taste").json()
@@ -217,3 +217,44 @@ def test_chat_syncs_the_calendar_for_the_weeks_the_chef_scheduled(client, monkey
     monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: NS(messages=NS(create=lambda **kw: script.pop(0))))
     assert client.post("/chat", json={"text": "put the soup on Wednesday next week"}).json()["text"] == "Added for Wednesday."
     assert synced == ["2026-11-09"]
+
+
+# ---- half-star ratings ----
+def test_ratings_go_in_half_star_steps(client):
+    rid = client.post("/recipes", json=SOUP).json()["id"]
+    cook = lambda **b: client.post(f"/recipes/{rid}/cooked", json=b)
+    r = cook(ratings={"Jake": 3.5, "Kadie": 4}).json()
+    assert r["rating"] == 4  # (3.5 + 4) / 2 = 3.75, to the nearest half star
+    assert cook(ratings={"Jake": 4.5, "Kadie": 4.5}).json()["rating"] == 4.5
+    assert cook(ratings={"Jake": 0.5}).json()["rating"] == 0.5
+    assert cook(ratings={"Jake": 5}).json()["rating"] == 5 and isinstance(cook(ratings={"Jake": 5}).json()["rating"], int)
+    assert cook(rating=3.5).json()["rating"] == 3.5  # a single overall rating works too
+    for bad in ({"Jake": 3.3}, {"Jake": 0}, {"Jake": 5.5}, {"Jake": 4.75}):
+        assert cook(ratings=bad).status_code == 422, bad
+    assert cook(rating=2.2).status_code == 422
+    hist = client.get(f"/recipes/{rid}/history").json()["cooks"]
+    assert any(c["ratings"] == {"Jake": 4.5, "Kadie": 4.5} for c in hist)
+
+
+def test_averages_round_to_the_nearest_half_with_ties_up(client):
+    rid = client.post("/recipes", json=SOUP).json()["id"]
+    avg = lambda a, b: client.post(f"/recipes/{rid}/cooked", json={"ratings": {"Jake": a, "Kadie": b}}).json()["rating"]
+    assert avg(5, 4) == 4.5      # 4.5 exactly
+    assert avg(4, 4.5) == 4.5    # 4.25 -> up to 4.5
+    assert avg(3.5, 3) == 3.5    # 3.25 -> up to 3.5
+    assert avg(3, 3.5) == 3.5
+    assert avg(1, 1.5) == 1.5    # 1.25 -> up
+
+
+def test_half_star_ratings_feed_the_taste_profile(client):
+    a = client.post("/recipes", json={**SOUP, "title": "Pie"}).json()["id"]
+    client.post(f"/recipes/{a}/cooked", json={"ratings": {"Jake": 3.5, "Kadie": 4.5}})
+    client.post(f"/recipes/{a}/cooked", json={"ratings": {"Jake": 2.5}})
+    t = client.get("/taste").json()["by_person"]
+    assert t["Kadie"]["loved"] == ["Pie"]                      # 4.5 counts as loved
+    assert t["Jake"] == {"loved": [], "disliked": []}          # his latest, 2.5, is lukewarm: neither loved nor disliked
+    client.post(f"/recipes/{a}/cooked", json={"ratings": {"Jake": 2}})
+    assert client.get("/taste").json()["by_person"]["Jake"]["disliked"] == ["Pie"]  # 2 or below counts as disliked
+    assert "Kadie loved: Pie" in chef.taste_context()
+    assert client.patch(f"/recipes/{a}", json={"rating": 4.5}).json()["rating"] == 4.5
+    assert client.patch(f"/recipes/{a}", json={"rating": 4.4}).status_code == 422

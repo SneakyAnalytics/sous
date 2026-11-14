@@ -182,3 +182,17 @@ input[type=number] { width: 5rem; }
 .undo-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem 1rem; border-radius: var(--radius); background: var(--color-cream); border: 1px solid var(--color-forest); }
 .trash { margin-top: 1rem; }
 .trash summary { cursor: pointer; color: var(--color-text-secondary); }
+
+/* half-star ratings */
+.stars { display: inline-flex; gap: 1px; vertical-align: middle; color: var(--color-gravel); }
+.star { position: relative; display: inline-block; }
+.star svg { position: absolute; inset: 0; }
+.star-empty { opacity: .45; }
+.star-input { display: inline-flex; align-items: center; gap: 2px; color: var(--color-gravel); }
+.star-slot { position: relative; display: inline-block; }
+.star-slot > .star { position: absolute; inset: 0; pointer-events: none; }
+.star-hit { position: absolute; top: 0; bottom: 0; width: 50%; background: none; border: 0; padding: 0; cursor: pointer; }
+.star-hit.left { left: 0; }
+.star-hit.right { right: 0; }
+.star-hit:focus-visible { outline: 2px solid var(--color-forest); outline-offset: -2px; background: rgba(44, 95, 45, .12); }
+.star-readout { min-width: 2rem; margin-left: .4rem; font-weight: 700; color: var(--color-text-secondary); }

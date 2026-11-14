@@ -98,8 +98,16 @@ class RecipePatch(BaseModel):
     chef_tips: list[str] | None = None
     tags: list[str] | None = None
     favorite: bool | None = None
-    rating: int | None = None
+    rating: float | None = Field(default=None, ge=0.5, le=5)
     notes: str | None = None
+
+
+    @field_validator("rating")
+    @classmethod
+    def _half(cls, v):
+        if v is not None and (v * 2) != int(v * 2):
+            raise ValueError("ratings are in half-star steps")
+        return v
 
 
 class ImportIn(BaseModel):
@@ -207,15 +215,22 @@ def recipe_restore(rid: int):
 
 
 class CookedIn(BaseModel):
-    rating: int | None = Field(default=None, ge=1, le=5)
-    ratings: dict[str, int] = {}  # per person: {"Jake": 5, "Kadie": 4}
+    rating: float | None = Field(default=None, ge=0.5, le=5)
+    ratings: dict[str, float] = {}  # per person, in half-star steps: {"Jake": 5, "Kadie": 4.5}
     notes: str = ""
 
     @field_validator("ratings")
     @classmethod
     def _stars(cls, v):
-        if any(not 1 <= n <= 5 for n in v.values()):
-            raise ValueError("ratings are 1 to 5 stars")
+        if any(not 0.5 <= n <= 5 or (n * 2) != int(n * 2) for n in v.values()):
+            raise ValueError("ratings are 0.5 to 5 stars, in half-star steps")
+        return v
+
+    @field_validator("rating")
+    @classmethod
+    def _half(cls, v):
+        if v is not None and (v * 2) != int(v * 2):
+            raise ValueError("ratings are in half-star steps")
         return v
 
 

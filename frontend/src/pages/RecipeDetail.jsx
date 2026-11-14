@@ -7,6 +7,8 @@ import { scaleIngredient, totalMinutes } from "../lib/format";
 import { recipeImage } from "../lib/recipeArt";
 import { downscaleImage } from "../lib/image";
 import RecipeEditor from "../components/RecipeEditor";
+import { Stars } from "../components/Stars";
+import { fmtStars } from "../lib/stars";
 
 export default function RecipeDetail() {
   const { id } = useParams();
@@ -112,7 +114,7 @@ export default function RecipeDetail() {
         <div>
           <h2>Times we've cooked it</h2>
           <ul className="step-list" style={{ listStyle: "none", paddingLeft: 0 }}>
-            {history.cooks.map((c) => <li key={c.id}><strong>{c.cooked_on}</strong>{Object.keys(c.ratings || {}).length ? <span> {Object.entries(c.ratings).map(([who, n]) => `${who} ${"★".repeat(n)}`).join(" · ")}</span> : c.rating ? ` ${"★".repeat(c.rating)}` : ""}{c.notes && <span className="muted">: {c.notes}</span>}</li>)}
+            {history.cooks.map((c) => <li key={c.id}><strong>{c.cooked_on}</strong>{Object.keys(c.ratings || {}).length ? <span> {Object.entries(c.ratings).map(([who, n]) => <span key={who} style={{ marginRight: ".7rem" }}>{who} <Stars value={n} size={14} /> {fmtStars(n)}</span>)}</span> : c.rating ? <span> <Stars value={c.rating} size={14} /> {fmtStars(c.rating)}</span> : ""}{c.notes && <span className="muted">: {c.notes}</span>}</li>)}
           </ul>
         </div>
       )}

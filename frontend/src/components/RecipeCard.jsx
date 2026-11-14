@@ -4,6 +4,8 @@ import { Clock, Star, Users } from "lucide-react";
 import { totalMinutes } from "../lib/format";
 import { recipeImage } from "../lib/recipeArt";
 import { cookedLine } from "../lib/browse";
+import { Stars } from "./Stars";
+import { fmtStars } from "../lib/stars";
 
 export default function RecipeCard({ recipe }) {
   const mins = totalMinutes(recipe);
@@ -14,7 +16,7 @@ export default function RecipeCard({ recipe }) {
       <div className="muted row" style={{ gap: ".9rem" }}>
         {mins && <span><Clock size={14} /> {mins} min</span>}
         <span><Users size={14} /> {recipe.servings}</span>
-        {recipe.rating && <span style={{ color: "var(--color-gravel)" }}>{"★".repeat(recipe.rating)}</span>}
+        {recipe.rating ? <span><Stars value={recipe.rating} size={14} /> {fmtStars(recipe.rating)}</span> : null}
       </div>
       <div className="muted" style={{ fontSize: ".85rem" }}>{cookedLine(recipe)}</div>
       {recipe.description && <p className="muted" style={{ margin: 0 }}>{recipe.description}</p>}

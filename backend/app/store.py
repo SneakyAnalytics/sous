@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -253,13 +254,22 @@ def clear_messages() -> None:
 REVISABLE = ("title", "description", "servings", "prep_min", "cook_min", "ingredients", "steps", "chef_tips", "tags")
 
 
-def log_cook(recipe_id: int, rating: int | None, notes: str, cooked_on: str | None = None,
+def _stars(n: float) -> int | float:
+    """Ratings are in half-star steps (0.5 to 5). Whole numbers stay ints so old and new ratings look the same."""
+    n = float(n)
+    return int(n) if n == int(n) else n
+
+
+def log_cook(recipe_id: int, rating: float | None, notes: str, cooked_on: str | None = None,
              ratings: dict | None = None) -> dict:
-    """Record a cook. `ratings` is per person ({"Jake": 5, "Kadie": 4}); the recipe's overall rating is their average."""
+    """Record a cook. `ratings` is per person ({"Jake": 5, "Kadie": 4.5}); the recipe's overall rating is their average,
+    to the nearest half star."""
     day = cooked_on or datetime.now(TZ).date().isoformat()
-    ratings = {k: int(v) for k, v in (ratings or {}).items() if v}
+    ratings = {k: _stars(v) for k, v in (ratings or {}).items() if v}
     if ratings:
-        rating = int(sum(ratings.values()) / len(ratings) + 0.5)  # 4.5 -> 5 (round() would give 4)
+        rating = math.floor(sum(ratings.values()) / len(ratings) * 2 + 0.5) / 2  # nearest half, ties up (4.25 -> 4.5)
+    if rating:
+        rating = _stars(rating)
     with connect() as c:
         c.execute("INSERT INTO cook_log (recipe_id, cooked_on, rating, notes, ratings) VALUES (?,?,?,?,?)",
                   (recipe_id, day, rating, notes.strip(), json.dumps(ratings)))
@@ -338,7 +348,7 @@ def taste_summary() -> dict:
     by_person: dict[str, dict] = {}
     with connect() as c:
         logs = c.execute("SELECT recipe_id, ratings FROM cook_log WHERE ratings != '{}' ORDER BY cooked_on, id").fetchall()
-    latest: dict[str, dict[int, int]] = {}  # person -> recipe -> their most recent rating
+    latest: dict[str, dict[int, float]] = {}  # person -> recipe -> their most recent rating
     for row in logs:
         for person, stars in json.loads(row["ratings"]).items():
             latest.setdefault(person, {})[row["recipe_id"]] = stars
