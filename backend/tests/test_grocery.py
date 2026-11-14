@@ -70,3 +70,22 @@ def test_head_word_decides_and_dried_herbs_are_spices():
     assert categorize("elbow macaroni") == "Canned & Dry Goods"
     assert categorize("dried thyme") == "Spices & Baking" and categorize("fresh thyme") == "Produce"
     assert categorize("bay leaves") == "Spices & Baking"
+
+
+def test_the_list_names_what_you_buy_and_ignores_stale_stored_categories():
+    from app.grocery import build_list
+    recipe = {"title": "Tortilla Soup", "servings": 4, "ingredients": [
+        {"name": "carrots, peeled and sliced on the diagonal", "quantity": 2, "category": "Produce"},
+        {"name": "carrots", "quantity": 1},
+        {"name": "ground cumin", "quantity": 1, "unit": "tsp", "category": "Meat & Seafood"},         # filed wrongly by an old version
+        {"name": "black pepper", "category": "Produce"},
+        {"name": "green beans, trimmed", "quantity": 1, "unit": "lb", "category": "Canned & Dry Goods"},
+        {"name": "low-sodium chicken broth", "quantity": 4, "unit": "cup", "category": "Meat & Seafood"},
+        {"name": "mild diced green chiles", "quantity": 1, "unit": "can"},
+        {"name": "corn tortillas", "quantity": 8, "category": "Produce"}]}
+    got = {i["name"]: i for i in build_list([{"recipe": recipe, "servings": 4}])}
+    assert got["carrots"]["display"] == "3" and "carrots, peeled and sliced on the diagonal" not in got  # merged, prep dropped
+    cat = {n: i["category"] for n, i in got.items()}
+    assert cat["ground cumin"] == "Spices & Baking" and cat["black pepper"] == "Spices & Baking"
+    assert cat["green beans"] == "Produce" and cat["low-sodium chicken broth"] == "Canned & Dry Goods"
+    assert cat["mild diced green chiles"] == "Canned & Dry Goods" and cat["corn tortillas"] == "Bakery"

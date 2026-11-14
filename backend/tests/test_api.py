@@ -211,3 +211,12 @@ def test_cart_mode_defaults_to_the_checklist_not_fake_products(client, monkeypat
     assert client.get("/cart/mode").json() == {"mode": "assist"}
     monkeypatch.setattr(config, "SAFEWAY_MODE", "mock")
     assert client.get("/cart/mode").json() == {"mode": "mock"}
+
+
+def test_chef_splits_prep_instructions_out_of_the_ingredient_name(client):
+    from app import chef
+    out = chef.run_tool("save_recipe", {"title": "Soup", "servings": 4, "steps": [{"text": "Stir"}], "ingredients": [
+        {"name": "carrots, peeled and sliced", "quantity": 3}, {"name": "onion, diced", "quantity": 1, "note": "yellow"}]}, [])
+    assert '"saved": true' in out
+    ings = client.get("/recipes").json()[0]["ingredients"]
+    assert [(i["name"], i["note"]) for i in ings] == [("carrots", "peeled and sliced"), ("onion", "yellow")]

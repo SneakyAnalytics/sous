@@ -258,3 +258,19 @@ def test_half_star_ratings_feed_the_taste_profile(client):
     assert "Kadie loved: Pie" in chef.taste_context()
     assert client.patch(f"/recipes/{a}", json={"rating": 4.5}).json()["rating"] == 4.5
     assert client.patch(f"/recipes/{a}", json={"rating": 4.4}).status_code == 422
+
+
+def test_answers_given_before_names_were_cleaned_up_still_count(client):
+    """Regression: "avocado, diced" became "avocado", which changed its key and would have erased the Have/Need answer."""
+    recipe = {"title": "Soup", "servings": 4, "steps": [{"text": "x"}], "ingredients": [
+        {"quantity": 1, "unit": "", "name": "avocado, diced"}, {"quantity": 2, "unit": "", "name": "onion"}]}
+    rid = client.post("/recipes", json=recipe).json()["id"]
+    week = store.planning_week_start()
+    client.post(f"/plan/{week}/items", json={"recipe_id": rid, "cook_date": store.week_days(week)[1]})
+    by = lambda: {i["name"]: i for i in client.get(f"/plan/{week}").json()["list"]}
+    assert "avocado" in by() and by()["avocado"]["key"] == "avocado|"
+    store.set_status(week, "avocado, diced|", "have")            # answered under the old key
+    assert by()["avocado"]["status"] == "have"
+    client.put(f"/plan/{week}/list/avocado%7C", json={"status": "need"})   # a new answer wins over the old one
+    assert by()["avocado"]["status"] == "need"
+    assert by()["onion"]["status"] is None

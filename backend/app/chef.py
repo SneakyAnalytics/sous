@@ -86,11 +86,16 @@ def _normalize_ingredients(ings: list[dict]) -> list[dict]:
         if not str(i.get("name", "")).strip():
             continue  # a nameless ingredient can't go on a grocery list
         base = parse_ingredient(i["name"]) if i.get("quantity") is None and not i.get("unit") else {}
+        name = base.get("name", i["name"]) if base else i["name"]
+        note = i.get("note", "")
+        if "," in name:  # the model sometimes writes "carrots, peeled and sliced": the part after the comma is the note
+            name, _, extra = name.partition(",")
+            note = note or extra.strip()
         out.append({
             "quantity": i.get("quantity", base.get("quantity")),
             "unit": i.get("unit") or base.get("unit", ""),
-            "name": base.get("name", i["name"]) if base else i["name"],
-            "note": i.get("note", ""),
+            "name": name.strip(),
+            "note": note,
             "category": (base or parse_ingredient(i["name"]))["category"],
         })
     return out

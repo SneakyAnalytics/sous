@@ -60,8 +60,16 @@ def _to_float(s: str) -> float:
 def categorize(name: str) -> str:
     first = re.split(r"\s+or\s+|,", re.sub(r"\(.*?\)", " ", name.lower()))[0]  # "white wine or chicken broth" -> "white wine"
     words = re.findall(r"[a-z]+", first)
+    if not words:
+        return "Other"
     if "dried" in words and words[-1] in HERBS:  # dried thyme is a spice-rack item, fresh thyme is produce
         return "Spices & Baking"
+    if words[-1] == "pepper" and set(words[:-1]) & {"black", "white", "ground", "cracked", "cayenne", "lemon"}:
+        return "Spices & Baking"  # black pepper is a spice; bell pepper is produce
+    if words[-1] in ("bean", "beans") and "green" in words:
+        return "Produce"
+    if words[-1] in ("chile", "chiles", "chili", "chilies") and "powder" not in words:
+        return "Canned & Dry Goods" if {"diced", "canned"} & set(words) else "Produce"
     # The word that says what it is comes last ("chicken BROTH", "garlic POWDER", "olive OIL"), so look from the end.
     # Within a word, the exact form wins ("tomatoes" is canned, "tomato" is produce) before the singular ("carrots" -> "carrot").
     for word in reversed(words):
@@ -148,10 +156,15 @@ def fmt_qty(q: float | None) -> str:
     return " ".join(parts)
 
 
+def base_name(name: str) -> str:
+    """What you buy: "carrots, peeled and sliced" -> "carrots". Prep belongs in the note, not the name."""
+    return name.split(",")[0].strip() or name.strip()
+
+
 def _category(ing: dict, name: str) -> str:
-    stored = ing.get("category")
-    # recipes saved before the plural fix were filed under "Other"; look again rather than trust that
-    return stored if stored and stored != "Other" else categorize(name)
+    # Always recompute: the categorizer has improved since older recipes were saved with their category baked in.
+    found = categorize(name)
+    return found if found != "Other" else (ing.get("category") or "Other")
 
 
 def build_list(plan_items: list[dict]) -> list[dict]:
@@ -163,13 +176,15 @@ def build_list(plan_items: list[dict]) -> list[dict]:
         for ing in recipe["ingredients"]:
             unit = normalize_unit(ing.get("unit"))
             qty = ing.get("quantity")
-            name = ing["name"].strip()
+            name = base_name(ing["name"])
             fam, factor = _family(unit)
             key = merge_key(name, unit)
             entry = merged.setdefault(key, {
                 "key": key, "name": name.lower(), "family": fam, "unit": unit, "base_qty": 0.0,
-                "has_qty": False, "category": _category(ing, name), "recipes": [],
+                "has_qty": False, "category": _category(ing, name), "recipes": [], "legacy_keys": set(),
             })
+            # before names were cleaned up, the key was built from the full text ("avocado, diced"): keep honouring answers given then
+            entry["legacy_keys"].add(merge_key(ing["name"].strip(), unit))
             if qty is not None:
                 entry["base_qty"] += qty * scale * factor
                 entry["has_qty"] = True
@@ -183,7 +198,7 @@ def build_list(plan_items: list[dict]) -> list[dict]:
         out.append({
             "key": e["key"], "name": e["name"], "quantity": qty, "unit": unit,
             "display": " ".join(p for p in (fmt_qty(qty), unit) if p),
-            "category": e["category"], "recipes": e["recipes"],
+            "category": e["category"], "recipes": e["recipes"], "legacy_keys": sorted(e["legacy_keys"] - {e["key"]}),
         })
     out.sort(key=lambda i: (CATEGORY_ORDER.index(i["category"]) if i["category"] in CATEGORY_ORDER else 99, i["name"]))
     return out

@@ -389,7 +389,8 @@ def plan_get(week_start: str):
     for s in shopping:
         s["staple"] = store.is_staple(s["name"], pantry)
         # an answer given for this week wins; otherwise a pantry staple counts as "have"
-        s["status"] = statuses.get(s["key"]) or ("have" if s["staple"] else None)
+        answered = statuses.get(s["key"]) or next((statuses[k] for k in s["legacy_keys"] if k in statuses), None)
+        s["status"] = answered or ("have" if s["staple"] else None)
     return {"week_start": week_start, "meal_target": store.get_meal_target(week_start), "items": items, "list": shopping}
 
 
