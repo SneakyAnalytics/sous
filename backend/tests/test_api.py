@@ -204,3 +204,10 @@ def test_the_chef_is_told_what_is_in_the_library(client):
     client.post(f"/recipes/{rid}/cooked", json={"ratings": {"Jake": 5, "Kadie": 5}})
     ctx = chef.library_context()
     assert f"Chili Mac (id {rid}, 5/5, cooked 1x)" in ctx and "complete library" in ctx
+
+
+def test_cart_mode_defaults_to_the_checklist_not_fake_products(client, monkeypatch):
+    from app import config
+    assert client.get("/cart/mode").json() == {"mode": "assist"}
+    monkeypatch.setattr(config, "SAFEWAY_MODE", "mock")
+    assert client.get("/cart/mode").json() == {"mode": "mock"}

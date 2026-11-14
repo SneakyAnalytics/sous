@@ -470,6 +470,11 @@ class CartIn(BaseModel):
     lines: list[CartLine]
 
 
+@app.get("/cart/mode")
+def cart_mode():
+    return {"mode": config.SAFEWAY_MODE}
+
+
 @app.post("/cart/match")
 async def cart_match(body: MatchIn):
     """For each needed ingredient, find candidate Safeway products. The user reviews before anything is added."""

@@ -38,14 +38,15 @@ CATEGORIES = [
                        "prosciutto ground"),
     ("Dairy & Eggs", "milk butter cream cheese yogurt egg eggs parmesan mozzarella cheddar sour"),
     ("Bakery", "bread bun buns tortilla pita baguette naan roll rolls"),
-    ("Canned & Dry Goods", "rice pasta noodle noodles flour sugar bean beans lentil lentils broth stock "
+    ("Canned & Dry Goods", "rice pasta macaroni spaghetti linguine penne fettuccine rigatoni orzo barley noodle noodles flour sugar bean beans lentil lentils broth stock "
                            "tomatoes paste can oats quinoa couscous breadcrumbs panko"),
-    ("Spices & Baking", "salt pepper paprika cumin oregano cinnamon nutmeg chili powder vanilla baking "
+    ("Spices & Baking", "bay salt pepper paprika cumin oregano cinnamon nutmeg chili powder vanilla baking "
                         "yeast cornstarch turmeric coriander cayenne flakes seasoning"),
     ("Oils & Condiments", "oil vinegar soy sauce mustard mayo mayonnaise ketchup honey syrup sriracha "
                           "worcestershire salsa wine"),
     ("Frozen", "frozen ice"),
 ]
+HERBS = {"thyme", "oregano", "basil", "parsley", "rosemary", "sage", "dill", "mint", "cilantro", "chive", "chives", "herbs", "tarragon", "marjoram"}
 CATEGORY_ORDER = [c for c, _ in CATEGORIES] + ["Other"]
 
 _FRACTIONS = {"½": "1/2", "¼": "1/4", "¾": "3/4", "⅓": "1/3", "⅔": "2/3", "⅛": "1/8"}
@@ -57,11 +58,17 @@ def _to_float(s: str) -> float:
 
 
 def categorize(name: str) -> str:
-    words = set(re.findall(r"[a-z]+", name.lower()))
-    words |= {_singular(w) for w in words}  # "carrots" must match the keyword "carrot"
-    for category, keywords in CATEGORIES:
-        if words & set(keywords.split()):
-            return category
+    first = re.split(r"\s+or\s+|,", re.sub(r"\(.*?\)", " ", name.lower()))[0]  # "white wine or chicken broth" -> "white wine"
+    words = re.findall(r"[a-z]+", first)
+    if "dried" in words and words[-1] in HERBS:  # dried thyme is a spice-rack item, fresh thyme is produce
+        return "Spices & Baking"
+    # The word that says what it is comes last ("chicken BROTH", "garlic POWDER", "olive OIL"), so look from the end.
+    # Within a word, the exact form wins ("tomatoes" is canned, "tomato" is produce) before the singular ("carrots" -> "carrot").
+    for word in reversed(words):
+        for form in (word, _singular(word)):
+            for category, keywords in CATEGORIES:
+                if form in keywords.split():
+                    return category
     return "Other"
 
 

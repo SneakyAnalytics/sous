@@ -196,3 +196,13 @@ input[type=number] { width: 5rem; }
 .star-hit.right { right: 0; }
 .star-hit:focus-visible { outline: 2px solid var(--color-forest); outline-offset: -2px; background: rgba(44, 95, 45, .12); }
 .star-readout { min-width: 2rem; margin-left: .4rem; font-weight: 700; color: var(--color-text-secondary); }
+
+/* safeway checklist */
+.progress { height: 6px; border-radius: 3px; background: var(--color-cream-dark); overflow: hidden; }
+.progress > div { height: 100%; background: var(--color-forest); transition: width .2s; }
+.shop-row { display: flex; align-items: center; gap: .75rem; padding: .5rem 0; border-bottom: 1px solid var(--color-border); }
+.shop-row .what { flex: 1; min-width: 0; }
+.shop-row .what small { display: block; color: var(--color-text-tertiary); }
+.shop-row.done .what { opacity: .5; text-decoration: line-through; }
+.tick { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; border: 2px solid var(--color-forest); background: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
+.tick.on { background: var(--color-forest); }

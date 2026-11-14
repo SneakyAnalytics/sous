@@ -6,7 +6,7 @@ import { api } from "../api";
 import { bannerWeek, emptyDay } from "../assets";
 import { fmtTime, mondayOf, shiftWeek, todayIso, totalMinutes, weekDays, weekLabel } from "../lib/format";
 import { groceryText, shareText } from "../lib/shareList";
-import CartReview from "../components/CartReview";
+import Shopping from "../components/Shopping";
 
 function MealRow({ it, days, defaultTime, onMove, onServings, onTime, onRemove }) {
   return (
@@ -170,7 +170,7 @@ export default function Plan() {
       {plan.list.length > 0 && (
         <section>
           <h2>Grocery list</h2>
-          <p className="muted">For each ingredient, mark whether you already have enough. Anything marked <strong>Need</strong> goes to your Safeway cart.</p>
+          <p className="muted">For each ingredient, mark whether you already have enough. Anything marked <strong>Need</strong> goes on your Safeway shopping list.</p>
           <div className="row" style={{ marginBottom: ".5rem" }}>
             <button className="btn outline small" onClick={() => plan.list.filter((i) => !i.status).forEach((i) => setStatus.mutate({ key: i.key, status: "need" }))} disabled={!unanswered}>Mark the rest as Need</button>
             <span className="muted">{unanswered ? `${unanswered} still to answer` : `${needed.length} to buy`}</span>
@@ -193,7 +193,7 @@ export default function Plan() {
           ))}
           <div className="row" style={{ marginTop: "1rem" }}>
             <button className="btn" disabled={unanswered > 0 || needed.length === 0} onClick={() => setReviewing(true)}>
-              <ShoppingCart size={18} /> Review {needed.length} item{needed.length === 1 ? "" : "s"} for Safeway
+              <ShoppingCart size={18} /> Shop {needed.length} item{needed.length === 1 ? "" : "s"} at Safeway
             </button>
             <button className="btn outline" onClick={async () => setShared(await shareText(groceryText(plan.list, `week of ${weekLabel(week)}`), "Groceries"))}>
               <Share2 size={18} /> Share list
@@ -203,7 +203,7 @@ export default function Plan() {
           </div>
         </section>
       )}
-      {reviewing && <CartReview items={needed} onClose={() => setReviewing(false)} />}
+      {reviewing && <Shopping items={needed} week={week} onClose={() => setReviewing(false)} />}
     </div>
   );
 }

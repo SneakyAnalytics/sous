@@ -54,6 +54,7 @@ export const api = {
   patchPlanItem: (id, body) => request(`/plan/items/${id}`, { method: "PATCH", body }),
   removePlanItem: (id) => request(`/plan/items/${id}`, { method: "DELETE" }),
   setStatus: (week, key, status) => request(`/plan/${week}/list/${encodeURIComponent(key)}`, { method: "PUT", body: { status } }),
+  cartMode: () => request("/cart/mode"),
   cartMatch: (names) => request("/cart/match", { method: "POST", body: { names } }),
   cartChat: (body) => request("/cart/chat", { method: "POST", body }),
   cartAdd: (lines) => request("/cart/add", { method: "POST", body: { lines } }),

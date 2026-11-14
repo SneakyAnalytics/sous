@@ -48,7 +48,11 @@ def test_plural_ingredients_are_categorized():
     from app.grocery import categorize
     assert categorize("carrots") == "Produce"
     assert categorize("yellow onions") == "Produce"
-    assert categorize("diced tomatoes") in ("Produce", "Canned & Dry Goods")
+    assert categorize("diced tomatoes") == "Canned & Dry Goods"      # canned, not fresh
+    assert categorize("diced tomatoes (14 oz can)") == "Canned & Dry Goods"
+    assert categorize("tomato") == "Produce"
+    assert categorize("white wine or chicken broth") == "Oils & Condiments"  # by the first alternative, not "chicken"
+    assert categorize("chicken broth") == "Canned & Dry Goods"
     assert categorize("eggs") == "Dairy & Eggs"
     assert categorize("mystery thing") == "Other"
 
@@ -57,3 +61,12 @@ def test_a_stale_other_category_is_rechecked_when_building_the_list():
     from app.grocery import build_list
     recipe = {"title": "Soup", "servings": 4, "ingredients": [{"name": "carrots", "quantity": 3, "category": "Other"}]}
     assert build_list([{"recipe": recipe, "servings": 4}])[0]["category"] == "Produce"
+
+
+def test_head_word_decides_and_dried_herbs_are_spices():
+    from app.grocery import categorize
+    assert categorize("garlic powder") == "Spices & Baking"       # not produce, despite "garlic"
+    assert categorize("chicken thighs") == "Meat & Seafood"
+    assert categorize("elbow macaroni") == "Canned & Dry Goods"
+    assert categorize("dried thyme") == "Spices & Baking" and categorize("fresh thyme") == "Produce"
+    assert categorize("bay leaves") == "Spices & Baking"
