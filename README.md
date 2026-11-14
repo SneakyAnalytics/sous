@@ -27,8 +27,16 @@ Playwright. It is unofficial and can break when Safeway changes its site or show
 without affecting the rest, and the grocery list always works on its own. The app only adds to the cart.
 
 ## Deploy (Beelink)
-`./deploy_to_beelink.sh` pulls the images GitHub Actions built for `origin/main` and restarts the stack over SSH/Tailscale (see `deploy.local.env.example`). It serves the UI on :3100 (the API is behind it at `/api`). The database lives in the
-`sous_data` volume. Keep `.env` on the Beelink only.
+`./deploy_to_beelink.sh` pulls the images GitHub Actions built for `origin/main` and restarts the stack over SSH/Tailscale
+(see `deploy.local.env.example`). It serves the UI on :3100 (the API is behind it at `/api`, and not otherwise reachable).
+The database and recipe photos live in the `sous_sous_data` volume.
+
+**Backups.** The API snapshots the database daily (14 kept, in the volume). A small `sous-backup` container then copies
+the snapshots and the recipe photos to an external drive (`D:\SousBackups` on the Beelink, or `OFFSITE_DIR_ON_BEELINK`),
+verifies each copy, and reports to the Recipes page every 10 minutes (it turns red if it goes quiet or fails). It only adds
+files, so nothing else on the drive is touched and a deleted photo stays in the backup. If the drive isn't connected the
+backup container can't start; the app is unaffected and the deploy script warns. `scripts/host/sous_backup.ps1` does the
+same copy by hand from the Beelink if ever needed.
 
 ## Google Calendar (optional)
 Meals you put on a day are written as timed `Cook: <recipe>` events to a separate **Meals** Google calendar (never

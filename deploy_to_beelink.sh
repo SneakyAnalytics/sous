@@ -6,15 +6,13 @@
 #   ./deploy_to_beelink.sh                          # deploy the commit origin/main points at
 #   ./deploy_to_beelink.sh --env ANTHROPIC_API_KEY  # ...and copy just these keys from your Mac .env
 #   ./deploy_to_beelink.sh --version <sha>          # deploy (or roll back to) a specific commit
-#   ./deploy_to_beelink.sh --register-backup        # ...and create/update the nightly SousBackup task (copies to D:)
 set -euo pipefail
 
-ENV_KEYS=(); VERSION=""; REGISTER_BACKUP=false
+ENV_KEYS=(); VERSION=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENV_KEYS+=("$2"); shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
-    --register-backup) REGISTER_BACKUP=true; shift ;;   # create/update the nightly SousBackup scheduled task on the Beelink
     *) echo "unknown option $1"; exit 2 ;;
   esac
 done
@@ -80,6 +78,7 @@ remote "if not exist $REMOTE_DIR\\google_token.pickle type nul > $REMOTE_DIR\\go
 {
   echo "APP_VERSION=$VERSION"
   echo "SOUS_URL=http://${BEELINK_HOST}:3100"
+  [[ -n "${OFFSITE_DIR_ON_BEELINK:-}" ]] && echo "OFFSITE_HOST_DIR=$OFFSITE_DIR_ON_BEELINK"
   if [[ -n "${GOOGLE_TOKEN_FILE_ON_BEELINK:-}" ]]; then
     echo "GOOGLE_TOKEN_FILE=$GOOGLE_TOKEN_FILE_ON_BEELINK"
     echo "GOOGLE_TOKEN_PATH=/run/google/token.pickle"
@@ -89,16 +88,11 @@ remote "if not exist $REMOTE_DIR\\google_token.pickle type nul > $REMOTE_DIR\\go
 remote "docker volume inspect sous_sous_data >nul 2>&1 || docker volume create sous_sous_data" >/dev/null
 
 echo "⬇️  Pulling images and restarting..."
-remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose pull && docker compose up -d --remove-orphans"
+remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose pull && docker compose up -d --remove-orphans api web"
 
-echo "🗄️  Copying the backup scripts..."
+# A manual backup script, for running by hand if ever needed. The routine copy is done by the sous-backup container.
 remote "if not exist $REMOTE_DIR\\scripts mkdir $REMOTE_DIR\\scripts" >/dev/null
-scp -q scripts/host/sous_backup.ps1 scripts/host/register_sous_backup_task.ps1 "$BEELINK:$REMOTE_DIR_FWD/scripts/"
-if $REGISTER_BACKUP; then
-  remote "powershell -NoProfile -ExecutionPolicy Bypass -File $REMOTE_DIR_FWD/scripts/register_sous_backup_task.ps1"
-else
-  echo "   (nightly task not touched; add --register-backup to create or update it)"
-fi
+scp -q scripts/host/sous_backup.ps1 "$BEELINK:$REMOTE_DIR_FWD/scripts/"
 
 echo "🩺 Waiting for health..."
 for i in $(seq 1 30); do
@@ -106,6 +100,14 @@ for i in $(seq 1 30); do
   sleep 10
   [[ $i -eq 30 ]] && { echo "❌ API not healthy. Logs: ssh $BEELINK \"docker logs --tail 80 sous-api\""; exit 1; }
 done
+# The backup container needs the external drive. If it isn't connected the container can't start; the app is unaffected.
+echo "🗄️  Starting the backup container (copies recipes and photos to the external drive)..."
+if remote "$DOCKER_SSH cd /d $REMOTE_DIR && docker compose up -d backup" >/dev/null 2>&1; then
+  sleep 6
+  remote "docker logs --tail 2 sous-backup" 2>&1 | sed 's/^/   /'
+else
+  echo "⚠️  The backup container did not start. Is the external drive connected? The app itself is fine; the Recipes page will warn."
+fi
 remote "docker ps --format \"{{.Names}}\t{{.Status}}\""
 remote "docker image prune -f" >/dev/null
 echo; echo "Deployed ${VERSION:0:12}.  App: http://${BEELINK_HOST}:3100"

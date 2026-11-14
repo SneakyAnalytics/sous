@@ -24,6 +24,31 @@ services:
     mem_limit: 1536m   # headless Chromium for the Safeway lookups needs headroom
     logging: *logging
 
+  # Copies database snapshots and recipe photos to the external drive (D:\SousBackups on the Beelink) and reports to the app.
+  # It only adds files. The drive is optional: if it isn't connected this container can't start, but the app is unaffected
+  # (deploy_to_beelink.sh starts it separately and warns). Set OFFSITE_HOST_DIR in .env to use a different folder.
+  backup:
+    image: ghcr.io/sneakyanalytics/sous-api:${APP_VERSION:-main}
+    build: ./backend
+    container_name: sous-backup
+    restart: unless-stopped
+    command: ["python", "-m", "app.offsite"]
+    environment:
+      - TZ=America/Los_Angeles
+      - DATA_DIR=/app/data
+      - OFFSITE_DIR=/offsite
+    volumes:
+      - sous_data:/app/data
+      - ${OFFSITE_HOST_DIR:-D:/SousBackups}:/offsite
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.offsite", "--healthcheck"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+    mem_limit: 128m
+    logging: *logging
+
   web:
     image: ghcr.io/sneakyanalytics/sous-web:${APP_VERSION:-main}
     build: ./frontend
