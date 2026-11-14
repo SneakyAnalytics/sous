@@ -62,6 +62,8 @@ def categorize(name: str) -> str:
     words = re.findall(r"[a-z]+", first)
     if not words:
         return "Other"
+    if "frozen" in words:  # frozen corn is in the freezer aisle, whatever it is
+        return "Frozen"
     if "dried" in words and words[-1] in HERBS:  # dried thyme is a spice-rack item, fresh thyme is produce
         return "Spices & Baking"
     if words[-1] == "pepper" and set(words[:-1]) & {"black", "white", "ground", "cracked", "cayenne", "lemon"}:

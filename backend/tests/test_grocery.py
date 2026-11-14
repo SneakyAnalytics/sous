@@ -89,3 +89,9 @@ def test_the_list_names_what_you_buy_and_ignores_stale_stored_categories():
     assert cat["ground cumin"] == "Spices & Baking" and cat["black pepper"] == "Spices & Baking"
     assert cat["green beans"] == "Produce" and cat["low-sodium chicken broth"] == "Canned & Dry Goods"
     assert cat["mild diced green chiles"] == "Canned & Dry Goods" and cat["corn tortillas"] == "Bakery"
+
+
+def test_frozen_anything_goes_to_the_freezer_aisle():
+    from app.grocery import categorize
+    assert categorize("frozen corn") == "Frozen" and categorize("frozen peas") == "Frozen"
+    assert categorize("corn") == "Produce"
