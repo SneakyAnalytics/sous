@@ -206,3 +206,8 @@ input[type=number] { width: 5rem; }
 .shop-row.done .what { opacity: .5; text-decoration: line-through; }
 .tick { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; border: 2px solid var(--color-forest); background: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: #fff; }
 .tick.on { background: var(--color-forest); }
+
+/* after-dinner debrief */
+.debrief { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+.action-card { align-self: flex-start; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; padding: .55rem .8rem; border: 1px solid var(--color-forest); border-radius: 12px; background: var(--color-cream); font-size: .9rem; }
+.action-card > span { flex: 1; min-width: 12rem; }

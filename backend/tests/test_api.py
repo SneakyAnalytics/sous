@@ -194,7 +194,7 @@ def test_chef_always_gives_up_gracefully_if_it_keeps_running_out_of_room(client,
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
     monkeypatch.setattr(chef.anthropic, "Anthropic", lambda: Fake)
-    assert "one recipe at a time" in client.post("/chat", json={"text": "everything"}).json()["text"]
+    assert "one thing at a time" in client.post("/chat", json={"text": "everything"}).json()["text"]
 
 
 def test_the_chef_is_told_what_is_in_the_library(client):

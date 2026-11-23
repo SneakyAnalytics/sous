@@ -22,6 +22,7 @@ export const api = {
   patchRecipe: (id, body) => request(`/recipes/${id}`, { method: "PATCH", body }),
   deleteRecipe: (id) => request(`/recipes/${id}`, { method: "DELETE" }),
   logCook: (id, body) => request(`/recipes/${id}/cooked`, { method: "POST", body }),
+  debrief: (id, body) => request(`/recipes/${id}/debrief`, { method: "POST", body }),
   recipeHistory: (id) => request(`/recipes/${id}/history`),
   undoRevision: (id) => request(`/recipes/${id}/undo-revision`, { method: "POST" }),
   taste: () => request("/taste"),

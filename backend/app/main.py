@@ -238,6 +238,17 @@ class PasteIn(BaseModel):
     text: str = Field(min_length=20, max_length=20000)
 
 
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=8000)
+    events: list[dict] = []  # what the chef did on that turn, sent back so it remembers it did it
+
+
+class DebriefIn(BaseModel):
+    text: str | None = Field(default=None, max_length=4000)
+    history: list[Turn] = []
+
+
 class StapleIn(BaseModel):
     staple: bool
 
@@ -255,6 +266,23 @@ def recipe_cooked(rid: int, body: CookedIn):
     if not store.get_recipe(rid):
         raise HTTPException(404)
     return store.log_cook(rid, body.rating, body.notes, ratings=body.ratings)
+
+
+@app.post("/recipes/{rid}/debrief")
+def recipe_debrief(rid: int, body: DebriefIn, background: BackgroundTasks):
+    """The after-dinner conversation: the chef asks follow-ups about the ratings and comments, then updates or retires the recipe."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise HTTPException(503, NO_KEY)
+    try:
+        out = chef.debrief(rid, [t.model_dump() for t in body.history], body.text)
+    except LookupError:
+        raise HTTPException(404)
+    except anthropic.APIError as e:
+        raise HTTPException(502, _api_error(e))
+    for e in out["events"]:
+        for week in e.get("weeks", []):
+            _sync_soon(background, week)  # a retired recipe comes off the plan, so its calendar events go too
+    return out
 
 
 @app.get("/recipes/{rid}/history")

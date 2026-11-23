@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Lightbulb, ListChecks, Pause, Play, X } from "lu
 import { api } from "../api";
 import { chefCelebrate } from "../assets";
 import { StarInput } from "../components/Stars";
+import Debrief from "../components/Debrief";
 import { fmtClock, scaleIngredient } from "../lib/format";
 import { amountLabel, segmentStep, usedIngredients } from "../lib/ingredients";
 import { swipeDirection } from "../lib/swipe";
@@ -198,8 +199,9 @@ function Rate({ recipe }) {
   const [stars, setStars] = useState({}); // person -> 1..5
   const [notes, setNotes] = useState("");
   const [saved, setSaved] = useState(false);
+  const [talking, setTalking] = useState(false); // once the chef has started, the conversation stays even if the rating is edited
   const rated = Object.keys(stars).length;
-  const save = useMutation({ mutationFn: () => api.logCook(recipe.id, { ratings: stars, notes }), onSuccess: () => setSaved(true) });
+  const save = useMutation({ mutationFn: () => api.logCook(recipe.id, { ratings: stars, notes }), onSuccess: () => { setSaved(true); setTalking(true); } });
   return (
     <div className="stack" style={{ width: "100%", maxWidth: 520 }}>
       {(household?.members ?? []).map((who) => (
@@ -210,9 +212,10 @@ function Rate({ recipe }) {
       ))}
       <textarea rows={3} value={notes} placeholder="What would we change next time? (the chef reads this)" onChange={(e) => { setNotes(e.target.value); setSaved(false); }} />
       <button className="btn" disabled={save.isPending || saved || (!Object.values(stars).some(Boolean) && !notes.trim())} onClick={() => { setStars(Object.fromEntries(Object.entries(stars).filter(([, n]) => n))); save.mutate(); }}>
-        {saved ? "Saved. The chef will remember." : "Save how it went"}
+        {saved ? "Saved. The chef is listening below." : "Save how it went, then talk it through"}
       </button>
       {save.isError && <div className="error">{save.error.message}</div>}
+      {talking && <Debrief recipeId={recipe.id} />}
     </div>
   );
 }

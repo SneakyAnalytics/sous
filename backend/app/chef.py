@@ -129,12 +129,29 @@ def _run_tool(name: str, args: dict, events: list[dict]) -> str:
         recipe = store.revise_recipe(args["recipe_id"], fields, args.get("reason", ""))
         if not recipe:
             return json.dumps({"error": "no such recipe"})
-        events.append({"type": "recipe_revised", "recipe_id": recipe["id"], "title": recipe["title"]})
-        return json.dumps({"revised": True, "changed": sorted(k for k in fields if k in store.REVISABLE)})
+        changed = sorted(k for k in fields if k in store.REVISABLE)
+        events.append({"type": "recipe_revised", "recipe_id": recipe["id"], "title": recipe["title"], "reason": args.get("reason", ""), "changed": changed})
+        return json.dumps({"revised": True, "changed": changed})
     if name == "remember_preference":
         existing = store.get_profile()
         store.set_profile((existing + "\n" if existing else "") + "- " + args["note"].strip())
+        events.append({"type": "preference_saved", "note": args["note"].strip()})
         return json.dumps({"saved": True})
+    if name == "add_recipe_note":
+        recipe = store.get_recipe(args["recipe_id"])
+        if not recipe:
+            return json.dumps({"error": "no such recipe"})
+        notes = (recipe["notes"] + "\n" if recipe["notes"] else "") + args["note"].strip()
+        store.update_recipe(recipe["id"], {"notes": notes})
+        events.append({"type": "recipe_noted", "recipe_id": recipe["id"], "title": recipe["title"], "note": args["note"].strip()})
+        return json.dumps({"noted": True})
+    if name == "retire_recipe":
+        recipe = store.get_recipe(args["recipe_id"])
+        if not recipe:
+            return json.dumps({"error": "no such recipe"})
+        weeks = store.soft_delete_recipe(recipe["id"])  # to the trash: restorable for 30 days
+        events.append({"type": "recipe_retired", "recipe_id": recipe["id"], "title": recipe["title"], "weeks": weeks})
+        return json.dumps({"retired": True, "restorable_for_days": 30})
     if name == "search_my_recipes":
         found = store.search_recipes(args.get("query", ""))
         return json.dumps([{"id": r["id"], "title": r["title"], "tags": r["tags"], "favorite": r["favorite"]} for r in found[:10]])
@@ -162,6 +179,89 @@ def _run_tool(name: str, args: dict, events: list[dict]) -> str:
         events.append({"type": "added_to_plan", "recipe_id": recipe["id"], "title": recipe["title"], "cook_date": day, "week_start": week})
         return json.dumps({"added": True, "week_start": week})
     return json.dumps({"error": f"unknown tool {name}"})
+
+
+RETIRE_TOOL = {"name": "retire_recipe", "description": "Take a recipe out of the household's recipe book (it goes to the trash and can be "
+               "restored for 30 days). Only after they have said they don't want to cook it again AND you have asked and they confirmed.",
+               "input_schema": {"type": "object", "properties": {"recipe_id": {"type": "integer"}, "reason": {"type": "string"}},
+                                "required": ["recipe_id"]}}
+NOTE_TOOL = {"name": "add_recipe_note", "description": "Add a line to this recipe's 'Our notes' for next time, when it doesn't change the recipe itself "
+             "(e.g. 'Kadie likes it with extra lemon').",
+             "input_schema": {"type": "object", "properties": {"recipe_id": {"type": "integer"}, "note": {"type": "string"}},
+                              "required": ["recipe_id", "note"]}}
+DEBRIEF_TOOLS = [TOOLS_BY_NAME["revise_recipe"], TOOLS_BY_NAME["remember_preference"], NOTE_TOOL, RETIRE_TOOL]
+
+DEBRIEF_SYSTEM = """You are Chef Claude, a warm, exacting master chef, talking with a couple right after they finished eating a dinner they cooked
+from one of their saved recipes. You can see the recipe and how they rated it, per person, and what they wrote. Your job is to close the
+loop: find out what to change, and change it while they are still at the table.
+
+How it goes:
+- First reply: one sentence that shows you read their ratings and comments, then the single most useful follow-up question. If their
+  comment is already specific enough to act on ("needs more garlic"), skip the question and propose the change.
+- Ask one question at a time, and no more than three in all. Prefer questions that pin down the fix ("Too salty: was it the sausage or the
+  broth?") over open-ended ones.
+- When you know what to change, call revise_recipe with exactly that change (send the complete ingredients or steps list when you change
+  them, keeping everything else as it was). Do it when they ask for the change or agree to your suggestion; if you thought of a change they
+  didn't mention, ask first. Afterwards say in one or two sentences what you changed. The old version is kept and they can undo it.
+- A lasting taste ("Kadie doesn't like sausage soups") goes to remember_preference, naming who. A reminder for next time that does not change
+  the recipe goes to add_recipe_note.
+- If they say they never want to cook it again, ask once whether to take it out of their recipe book (it can be restored for 30 days). Call
+  retire_recipe only after they say yes. If there is a lesson in why, also call remember_preference.
+- Never change a different recipe, and don't repeat what a tool already did. Keep every reply short and conversational, in plain text.
+- When the loop is closed, end with one warm line about next time."""
+
+
+def _debrief_context(recipe: dict) -> str:
+    def ing(i):
+        qty = " ".join(str(x) for x in (i.get("quantity"), i.get("unit")) if x not in (None, ""))
+        return "- " + " ".join(p for p in (qty, i["name"], f"({i['note']})" if i.get("note") else "") if p)
+    steps = [f"{n}. {s['text']}" + (f" [{s['timer_seconds'] // 60} min]" if s.get("timer_seconds") else "") for n, s in enumerate(recipe["steps"], 1)]
+    cooks = store.cook_history(recipe["id"])[:4]
+    past = [f"- {c['cooked_on']}: " + (", ".join(f"{who} {n}" for who, n in c["ratings"].items()) or (f"{c['rating']}" if c["rating"] else "no stars"))
+            + (f", said: \"{c['notes']}\"" if c["notes"] else "") for c in cooks]
+    parts = [f"We just finished cooking and eating \"{recipe['title']}\" (recipe id {recipe['id']}, serves {recipe['servings']}). Here is the recipe "
+             "as it is right now (including any changes you have already made in this conversation) and how it went.",
+             "Ingredients:\n" + "\n".join(ing(i) for i in recipe["ingredients"]),
+             "Method:\n" + "\n".join(steps),
+             "Chef's tips: " + " | ".join(recipe["chef_tips"]) if recipe["chef_tips"] else "",
+             "Cooked, newest first (the first line is tonight):\n" + ("\n".join(past) if past else "- no ratings recorded yet"),
+             "Our notes on it: " + recipe["notes"] if recipe["notes"] else "",
+             "(This recipe is currently in the trash.)" if recipe.get("deleted_at") else "",
+             "Start the debrief."]
+    return "\n\n".join(p for p in parts if p)
+
+
+def _actions_taken(events: list[dict]) -> str:
+    """What the chef did on an earlier turn, in words, so it remembers it did it (it only ever sees the text of past turns)."""
+    said = []
+    for e in events:
+        kind = e.get("type")
+        if kind == "recipe_revised":
+            said.append("changed the recipe (" + (e.get("reason") or ", ".join(e.get("changed", [])) or "edited") + ")")
+        elif kind == "recipe_retired":
+            said.append("moved the recipe to the trash")
+        elif kind == "preference_saved":
+            said.append(f"saved a taste preference: {e.get('note', '')}")
+        elif kind == "recipe_noted":
+            said.append(f"added a note to the recipe: {e.get('note', '')}")
+    return ("\n[Actions I took in that reply: " + "; ".join(said) + ". These are done.]") if said else ""
+
+
+def debrief(recipe_id: int, history: list[dict], text: str | None) -> dict:
+    """One turn of the after-dinner conversation about a recipe. The caller keeps the transcript and sends it back each turn."""
+    recipe = store.get_recipe(recipe_id, include_deleted=True)
+    if not recipe:
+        raise LookupError("no such recipe")
+    messages = [{"role": "user", "content": _debrief_context(recipe)}]
+    messages += [{"role": h["role"], "content": h["text"] + (_actions_taken(h.get("events") or []) if h["role"] == "assistant" else "")}
+                 for h in history[-20:]]
+    if text and text.strip():
+        messages.append({"role": "user", "content": text.strip()})
+    elif messages[-1]["role"] == "assistant":
+        messages.append({"role": "user", "content": "Go on."})  # the API needs a user turn last
+    events: list[dict] = []
+    reply = _converse(DEBRIEF_SYSTEM + taste_context(), DEBRIEF_TOOLS, messages, events, max_turns=6)
+    return {"reply": reply, "events": events, "recipe": store.get_recipe(recipe_id, include_deleted=True)}
 
 
 def _week_block(week: str, heading: str) -> list[str]:
@@ -276,7 +376,7 @@ def _history() -> list[dict]:
     for m in store.recent_messages(30):
         text = m["text"]
         for e in m["events"]:
-            text += f"\n[{e['type']}: recipe #{e['recipe_id']} {e['title']}]"
+            text += f"\n[{e['type']}: " + (f"recipe #{e['recipe_id']} {e['title']}" if "recipe_id" in e else e.get("note", "")) + "]"
         msgs.append({"role": m["role"], "content": text})
     while msgs and msgs[0]["role"] != "user":
         msgs.pop(0)
@@ -292,34 +392,39 @@ def chat(user_text: str) -> dict:
         raise
 
 
-def _chat(user_text: str, sent: dict) -> dict:
+def _converse(system: str, tools: list[dict], messages: list[dict], events: list[dict], max_turns: int = 8) -> str:
+    """Run the model until it stops calling tools, applying each tool call. Returns the final text.
+
+    A reply that ran out of room (possibly halfway through a tool call) is discarded and retried in smaller pieces, never
+    shown as the answer. `messages` is extended in place.
+    """
     client = anthropic.Anthropic()
-    messages = _history()
-    events: list[dict] = []
-    system = SYSTEM + plan_context() + library_context() + taste_context()
     cut_off = 0
-    for _ in range(8):  # bounded tool loop
-        resp = client.messages.create(model=config.ANTHROPIC_MODEL, max_tokens=MAX_TOKENS, system=system, tools=TOOLS, messages=messages)
+    for _ in range(max_turns):
+        resp = client.messages.create(model=config.ANTHROPIC_MODEL, max_tokens=MAX_TOKENS, system=system, tools=tools, messages=messages)
         log.info("chef reply: stop_reason=%s output_tokens=%s", resp.stop_reason, getattr(resp.usage, "output_tokens", "?"))
         if resp.stop_reason == "max_tokens":
-            # The reply ran out of room, possibly halfway through saving a recipe. A half-written tool call can't be used,
-            # so discard it and ask for the work in smaller pieces instead of presenting the stub as the answer.
             cut_off += 1
             if cut_off > 2:
-                text = "That was a lot to write in one go and I kept running out of room. Could we do one recipe at a time?"
-                break
+                return "That was a lot to write in one go and I kept running out of room. Could we do one thing at a time?"
             messages.append({"role": "user", "content": "Your last reply was cut off before it finished, so nothing was saved. "
-                             "Do it again, one recipe per reply (a single tool call), and keep going until each is saved."})
+                             "Do it again, one step per reply (a single tool call), and keep going until it is done."})
             continue
         if resp.stop_reason != "tool_use":
-            text = "".join(b.text for b in resp.content if b.type == "text").strip()
-            break
+            # a refusal or an empty turn has no text: say something rather than show a blank bubble
+            return "".join(b.text for b in resp.content if b.type == "text").strip() or "Hmm, I'm not sure what to add there. Tell me more?"
         messages.append({"role": "assistant", "content": resp.content})
         results = [
             {"type": "tool_result", "tool_use_id": b.id, "content": run_tool(b.name, b.input, events)}
             for b in resp.content if b.type == "tool_use"
         ]
         messages.append({"role": "user", "content": results})
-    else:
-        text = "I got tangled up there. Could you say that again?"
+    return "I got tangled up there. Could you say that again?"
+
+
+def _chat(user_text: str, sent: dict) -> dict:
+    messages = _history()
+    events: list[dict] = []
+    system = SYSTEM + plan_context() + library_context() + taste_context()
+    text = _converse(system, TOOLS, messages, events)
     return store.add_message("assistant", text, events)
